@@ -1,0 +1,23 @@
+[workspace]
+name = "weather-report-bot"
+version = "0.1.0"
+description = "Daily weather report chart posted to Twitter and BlueSky"
+authors = ["bdgroves"]
+channels = ["conda-forge"]
+platforms = ["win-64", "linux-64", "osx-64", "osx-arm64"]
+
+[tasks]
+chart = "python src/main.py"
+twitter = "python src/twitter_post.py"
+bluesky = "python src/bluesky_post.py"
+all = { depends-on = ["chart", "twitter", "bluesky"] }
+view = "start weather_report.png"
+
+[dependencies]
+python = ">=3.11"
+matplotlib = ">=3.8.4"
+numpy = ">=1.26.4"
+requests = ">=2.31.0"
+pytz = ">=2024.1"
+pillow = ">=10.3.0"
+tweepy = ">=4.14.0"
