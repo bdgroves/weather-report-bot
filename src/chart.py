@@ -59,7 +59,7 @@ GRADIENT_COOL  = "#58A6FF"
 LOCATION_COLORS = ["#58A6FF", "#3FB950", "#F78166", "#E3B341"]
 
 # Emoji name -> asset file mapping
-LOC_EMOJI_NAMES  = ["tree", "mountain", "fire", "slots"]
+LOC_EMOJI_NAMES  = ["tree", "national-park", "fire", "gem"]
 
 STAT_EMOJI_NAMES = [
     "lightning",    # Hottest
@@ -118,7 +118,7 @@ def _draw_header(fig, spec, report_period, timestamp):
     ax.axis("off")
 
     period_word  = "Morning" if report_period == "morning" else "Evening"
-    emoji_name   = "sunrise" if report_period == "morning" else "sunset"
+    emoji_name   = "sunrise2" if report_period == "morning" else "moon"
 
     # Emoji left of title
     place_emoji(ax, emoji_name, x=0.08, y=0.72, zoom=0.30)
