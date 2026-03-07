@@ -1,3 +1,11 @@
 # pixi environments
 .pixi/*
 !.pixi/config.toml
+
+# Generated outputs
+weather_*.png
+weather_report.png
+
+# Python cache
+__pycache__/
+*.pyc
