@@ -1,6 +1,11 @@
 import os
+import sys
 import requests
 from datetime import datetime, timezone
+
+sys.path.insert(0, os.path.dirname(__file__))
+from weather import get_weather_data
+from chart import build_post_text
 
 BSKY_API = "https://bsky.social/xrpc"
 
@@ -34,16 +39,25 @@ def post_to_bluesky():
     password      = os.environ["BLUESKY_APP_PASSWORD"]
     report_period = os.environ.get("REPORT_PERIOD", "morning")
     timestamp     = os.environ.get("TIMESTAMP", "")
+    owm_key       = os.environ.get("OPENWEATHER_API_KEY", "")
 
-    period_text = "Morning" if report_period == "morning" else "Evening"
+    # Build rich post text from live data if available, else fallback
+    if owm_key:
+        print("Fetching weather data for post text...")
+        try:
+            weather_data = get_weather_data(owm_key)
+            post_text = build_post_text(weather_data, report_period, timestamp)
+        except Exception as e:
+            print(f"  Could not fetch live data for text: {e}")
+            post_text = _fallback_text(report_period, timestamp)
+    else:
+        post_text = _fallback_text(report_period, timestamp)
 
-    post_text = (
-        f"{period_text} Weather Report\n"
-        f"Lakewood WA | Groveland CA | Death Valley CA | Reno NV\n"
-        f"{timestamp}\n\n"
-        f"Current conditions, temps, UV, wind and more!\n\n"
-        f"#Weather #Lakewood #DeathValley #Reno #GrovelandCA #PNW"
-    )
+    # BlueSky has a 300 grapheme limit
+    if len(post_text) > 300:
+        post_text = post_text[:297] + "..."
+
+    period = "Morning" if report_period == "morning" else "Evening"
 
     print("Authenticating with BlueSky...")
     session = create_session(handle, password)
@@ -61,7 +75,10 @@ def post_to_bluesky():
             "images": [
                 {
                     "image": blob,
-                    "alt": f"{period_text} weather report for Lakewood WA, Groveland CA, Death Valley CA, Reno NV",
+                    "alt": (
+                        f"{period} weather report for "
+                        f"Lakewood WA, Groveland CA, Death Valley CA, Reno NV"
+                    ),
                 }
             ],
         },
@@ -81,6 +98,15 @@ def post_to_bluesky():
     )
     resp.raise_for_status()
     print(f"BlueSky post created! URI: {resp.json().get('uri')}")
+
+
+def _fallback_text(report_period, timestamp):
+    period = "Morning" if report_period == "morning" else "Evening"
+    return (
+        f"{period} Weather Report  |  {timestamp}\n"
+        f"Lakewood WA  |  Groveland CA  |  Death Valley CA  |  Reno NV\n\n"
+        f"#Weather #Lakewood #DeathValley #Reno #GrovelandCA #PNW #DailyWeather"
+    )
 
 
 if __name__ == "__main__":

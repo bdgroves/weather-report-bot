@@ -1,412 +1,516 @@
+"""
+chart.py  —  Broadcast-style per-station weather cards.
+Drop-in replacement. Same public signature as original.
+
+Outputs:
+    weather_report.png        <- 2x2 combined card (posted to social)
+    weather_lakewood.png
+    weather_groveland.png
+    weather_death_valley.png
+    weather_reno.png
+"""
+
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-import matplotlib.gridspec as gridspec
-import matplotlib.image as mpimg
-from matplotlib.offsetbox import AnnotationBbox, OffsetImage
+import matplotlib.patheffects as pe
+from matplotlib.patches import FancyBboxPatch, Circle, Ellipse, Rectangle
 import numpy as np
+from datetime import datetime
 import os
 
-# ── Emoji Image Loader ───────────────────────────────────────────
-EMOJI_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets", "emoji")
+# ── THEME ─────────────────────────────────────────────────────────────────────
+BG   = "#050D1A"
+HDR  = "#060E1C"
+ACC  = "#38BDF8"
+ACC2 = "#0EA5E9"
+MUT  = "#8B9DB5"
+DIV  = "#1A3050"
+WH   = "#EDF3FA"
+F    = "DejaVu Sans"
 
-_emoji_cache = {}
+STATION_LABELS = {
+    "Lakewood":    "HOME BASE",
+    "Groveland":   "SIERRA FOOTHILLS",
+    "Death Valley":"DEATH VALLEY, CA",
+    "Reno":        "BIGGEST LITTLE CITY",
+}
 
-def get_emoji(name, zoom=0.25):
-    """Load a Twemoji PNG and return an OffsetImage."""
-    if name not in _emoji_cache:
-        path = os.path.join(EMOJI_DIR, f"{name}.png")
-        if os.path.exists(path):
-            img = mpimg.imread(path)
-            _emoji_cache[name] = img
-        else:
-            _emoji_cache[name] = None
-    img = _emoji_cache[name]
-    if img is None:
-        return None
-    return OffsetImage(img, zoom=zoom)
+# ── HELPERS ───────────────────────────────────────────────────────────────────
+def _fmt_time(t: str) -> str:
+    """Strip leading zero: '06:10 AM' -> '6:10 AM'."""
+    return t.lstrip("0") if t else t
+
+def _now_str() -> str:
+    """Windows-safe formatted timestamp."""
+    n = datetime.now()
+    return n.strftime("%I:%M %p").lstrip("0") + f"  .  {n.strftime('%a %b')} {n.day}, {n.year}"
+
+def _pick_icon(desc: str) -> str:
+    d = desc.lower()
+    if any(w in d for w in ("thunder", "storm")):           return "rain"
+    if any(w in d for w in ("drizzle", "rain", "shower")):  return "rain"
+    if any(w in d for w in ("snow", "sleet", "blizzard")):  return "snow"
+    if any(w in d for w in ("fog", "mist", "haze", "smoke")): return "cloudy"
+    if any(w in d for w in ("overcast", "overcast clouds")): return "cloudy"
+    if any(w in d for w in ("broken", "mostly cloudy")):    return "cloudy"
+    if any(w in d for w in ("scattered", "few clouds", "partial", "partly")): return "partly"
+    if any(w in d for w in ("clear", "sunny")):             return "sunny"
+    return "partly"
+
+def _station_label(name: str, temp: int) -> str:
+    """Dynamic label — base for most, temperature-reactive for Death Valley."""
+    if name == "Death Valley":
+        if temp >= 110: return "EXTREME HEAT WARNING"
+        if temp >= 95:  return "DANGEROUS HEAT"
+        if temp >= 80:  return "HOT & DRY"
+        return "DEATH VALLEY, CA"
+    return STATION_LABELS.get(name, name.upper())
+
+def _tcol(t):
+    for thresh, c in [
+        (100,"#FF3333"),(90,"#FF6B35"),(80,"#F78166"),
+        (70, "#E3B341"),(60,"#3CB86B"),(50,"#58A6FF"),(32,"#79C0FF"),
+    ]:
+        if t >= thresh: return c
+    return "#B0D8FF"
+
+def _uv_info(u):
+    for thresh, c, l in [
+        (11,"#A855F7","EXTREME"),(8,"#EF4444","VERY HIGH"),
+        (6, "#F97316","HIGH"),  (3,"#EAB308","MODERATE"),
+    ]:
+        if u >= thresh: return c, l
+    return "#22C55E", "LOW"
+
+def _compass_to_deg(d: str) -> float:
+    m = {"N":0,"NNE":22.5,"NE":45,"ENE":67.5,"E":90,"ESE":112.5,
+         "SE":135,"SSE":157.5,"S":180,"SSW":202.5,"SW":225,"WSW":247.5,
+         "W":270,"WNW":292.5,"NW":315,"NNW":337.5}
+    return m.get(str(d).upper(), 0)
+
+# ── ICONS ─────────────────────────────────────────────────────────────────────
+def _sun(ax, cx, cy, r, col="#FFD60A", a=1.0):
+    ax.add_patch(Circle((cx,cy), r, facecolor=col, zorder=5, alpha=a))
+    for ang in np.linspace(0, 360, 9)[:-1]:
+        rad = np.radians(ang)
+        ax.plot([cx+r*1.38*np.cos(rad), cx+r*1.88*np.cos(rad)],
+                [cy+r*1.38*np.sin(rad), cy+r*1.88*np.sin(rad)],
+                color=col, lw=2.2, solid_capstyle="round", zorder=4, alpha=a*.92)
+
+def _cloud(ax, cx, cy, r, col="#8099B0", a=1.0):
+    for px,py,pr in [(cx-r*.38,cy-.04*r,r*.50),(cx+r*.38,cy-.04*r,r*.50),(cx,cy+.22*r,r*.62)]:
+        ax.add_patch(Circle((px,py), pr, facecolor=col, zorder=5, alpha=a))
+    ax.add_patch(FancyBboxPatch((cx-r*.82,cy-r*.20), r*1.64, r*.32,
+                                 boxstyle="round,pad=0.01", facecolor=col, zorder=4, alpha=a))
+
+def _draw_icon(ax, cx, cy, r, kind):
+    if   kind == "sunny":
+        _sun(ax, cx, cy, r)
+    elif kind == "partly":
+        _sun(ax, cx+r*.30, cy+r*.28, r*.62, a=.95)
+        _cloud(ax, cx-r*.08, cy-r*.10, r*.88, col="#9BAFC0")
+    elif kind == "cloudy":
+        _cloud(ax, cx+r*.22, cy+r*.18, r*.65, col="#6B8099", a=.7)
+        _cloud(ax, cx, cy, r, col="#9BAFC0")
+    elif kind == "snow":
+        _cloud(ax, cx, cy+r*.22, r*.85, col="#7090A0")
+        for dx,dy in [(-0.35,-0.45),(0,-0.62),(0.35,-0.45),(-0.18,-0.80),(0.18,-0.80)]:
+            ax.add_patch(Circle((cx+dx*r, cy+dy*r), r*.09, facecolor="#A8D8FF", zorder=6))
+    elif kind == "rain":
+        _cloud(ax, cx, cy+r*.25, r, col="#5D7080")
+        for dx,dy in [(-0.38,-0.52),(0,-0.70),(0.38,-0.52),(-0.19,-0.88),(0.19,-0.88)]:
+            ax.plot([cx+dx*r, cx+dx*r-.04*r],[cy+dy*r, cy+dy*r-.22*r],
+                    color="#58A6FF", lw=2.0, solid_capstyle="round", zorder=6, alpha=.9)
+
+# ── GAUGE ─────────────────────────────────────────────────────────────────────
+def _gauge(ax, value, vmin, vmax, color, label, unit=""):
+    r = 0.85
+    tb = np.linspace(np.pi, 0, 120)
+    frac = np.clip((value-vmin)/(vmax-vmin), 0, 1)
+    tv   = np.linspace(np.pi, np.pi - frac*np.pi, 120)
+    ax.plot(r*np.cos(tb), r*np.sin(tb), color=DIV,   lw=10, solid_capstyle="round", zorder=3)
+    ax.plot(r*np.cos(tv), r*np.sin(tv), color=color, lw=10, solid_capstyle="round", zorder=4)
+    ax.text(0, 0.08, f"{value}{unit}", ha="center", va="center",
+            fontsize=13, fontweight="bold", color=WH, fontfamily=F, zorder=5)
+    ax.text(0, -0.50, label, ha="center", fontsize=7, color=MUT, fontfamily=F, zorder=5)
+
+# ── COMPASS ───────────────────────────────────────────────────────────────────
+def _compass(ax, deg, mph, dirstr):
+    r = 1.0
+    ax.add_patch(Circle((0,0), r,     fill=False, edgecolor=DIV,       lw=2.5, zorder=3))
+    ax.add_patch(Circle((0,0), r*.86, facecolor=BG, edgecolor="#182E48", lw=1,   zorder=3))
+    for a, l in [(90,"N"),(270,"S"),(0,"E"),(180,"W")]:
+        rad = np.radians(a)
+        ax.text(r*.67*np.cos(rad), r*.67*np.sin(rad), l,
+                ha="center", va="center", fontsize=8, fontweight="bold",
+                color=MUT, fontfamily=F, zorder=6)
+    rad  = np.radians(90 - deg)
+    tip  = ( r*.54*np.cos(rad),  r*.54*np.sin(rad))
+    tail = (-r*.44*np.cos(rad), -r*.44*np.sin(rad))
+    ax.annotate("", xy=tip, xytext=tail,
+                arrowprops=dict(arrowstyle="->", color=ACC, lw=3.0, mutation_scale=20), zorder=7)
+    ax.text(0, -r*1.70, f"{mph} mph  {dirstr}", ha="center", va="top",
+            fontsize=8.5, color=ACC, fontweight="bold", fontfamily=F)
+
+# ── TEMP RANGE BAR ────────────────────────────────────────────────────────────
+def _temp_bar(ax, temp, lo, hi, x=8, y=11, w=84, h=7):
+    """Gradient bar showing where current temp sits between lo and hi."""
+    ax.add_patch(FancyBboxPatch((x,y),(w),(h),
+                                 boxstyle="round,pad=0.4", facecolor=DIV, zorder=4))
+    span  = max(hi - lo, 1)
+    steps = 40
+    for s in range(steps):
+        frac = s / steps
+        rv = int(max(0, min(255, 88  + frac*(255-88))))
+        gv = int(max(0, min(255, 166 + frac*(107-166))))
+        bv = int(max(0, min(255, 255 + frac*(53 -255))))
+        ax.add_patch(Rectangle((x + w*frac, y), w/steps+0.5, h,
+                                facecolor=f"#{rv:02x}{gv:02x}{bv:02x}",
+                                zorder=5, alpha=0.55))
+    pos = x + w * np.clip((temp - lo) / span, 0.02, 0.98)
+    ax.plot([pos, pos], [y-1.2, y+h+1.2], color=WH, lw=2.2, zorder=7)
+    ax.add_patch(Circle((pos, y + h/2), 1.8, facecolor=WH, zorder=8))
+
+# ── SINGLE CARD ───────────────────────────────────────────────────────────────
+def _render_card(loc: dict, out: str):
+    wind_deg  = _compass_to_deg(loc.get("wind_dir", "N"))
+    icon_type = _pick_icon(loc.get("description", ""))
+    slabel    = _station_label(loc["name"], loc["temp"])
+    uvc, uvlbl = _uv_info(loc["uv_index"])
+    tc        = _tcol(loc["temp"])
+
+    DPI = 150
+    fig = plt.figure(figsize=(12.0, 6.75), dpi=DPI, facecolor=BG)
+
+    # Background glow
+    ba = fig.add_axes([0,0,1,1], zorder=0)
+    ba.set_xlim(0,1); ba.set_ylim(0,1); ba.axis("off")
+    ba.add_patch(Rectangle((0,0),1,1, facecolor=BG))
+    ba.add_patch(Ellipse((.09,.89),.52,.34, facecolor="#0F2840", alpha=.40, zorder=1))
+
+    # ── Header ────────────────────────────────────────────────────────────────
+    ha = fig.add_axes([0,.865,1,.135], zorder=10)
+    ha.set_xlim(0,1); ha.set_ylim(0,1); ha.axis("off")
+    ha.add_patch(Rectangle((0,0),1,1, facecolor=HDR))
+    ha.add_patch(Rectangle((0,.90),1,.10, facecolor=ACC))
+    ha.add_patch(Rectangle((0,0),.008,1,  facecolor=ACC))
+    ha.text(.021,.74, slabel, fontsize=8.5, color=ACC,
+            fontweight="bold", fontfamily=F, va="center")
+    ha.text(.021,.28, f"{loc['name']}, {loc['state']}", fontsize=17,
+            color=WH, fontweight="bold", fontfamily=F, va="center")
+    ha.add_patch(FancyBboxPatch((.375,.12),.250,.76, boxstyle="round,pad=0.02",
+                                 facecolor="#0A1C30", edgecolor=ACC2, lw=1.5, zorder=5))
+    ha.text(.50,.50, loc["description"].upper(), ha="center", va="center",
+            fontsize=9.5, color=WH, fontweight="bold", fontfamily=F, zorder=6)
+    ha.text(.988,.50, _now_str(), ha="right", va="center",
+            fontsize=8.5, color=MUT, fontfamily=F)
+
+    # ── Ticker ────────────────────────────────────────────────────────────────
+    ta = fig.add_axes([0,0,1,.060], zorder=10)
+    ta.set_xlim(0,1); ta.set_ylim(0,1); ta.axis("off")
+    ta.add_patch(Rectangle((0,0),1,1, facecolor=HDR))
+    ta.add_patch(Rectangle((0,.76),1,.24, facecolor=ACC2, alpha=.85))
+    ticker_items = [
+        f"SUNRISE  {_fmt_time(loc['sunrise'])}",
+        f"SUNSET  {_fmt_time(loc['sunset'])}",
+        f"DEW PT  {loc['dew_point']}\u00b0F",
+        f"PRESSURE  {loc['pressure']} hPa",
+        f"CLOUDS  {loc['cloud_cover']}%",
+        f"VIS  {loc['visibility']} mi",
+        "@bdgroves",
+    ]
+    ta.text(.50,.38, "   |   ".join(ticker_items), ha="center", va="center",
+            fontsize=7.8, color=WH, fontweight="bold", fontfamily=F, zorder=5)
+
+    # ── Body panels ───────────────────────────────────────────────────────────
+    BY, BH = .060, .805
+    L0,L1  = .000,.305
+    M0,M1  = .308,.665
+    R0,R1  = .668,1.00
+
+    # Divider lines between panels
+    for xd in [L1+.001, M1+.001]:
+        d = fig.add_axes([xd,BY,.003,BH], zorder=5)
+        d.set_xlim(0,1); d.set_ylim(0,1); d.axis("off")
+        d.add_patch(Rectangle((0,0),1,1, facecolor=DIV))
+
+    # ── LEFT: temp + icon ─────────────────────────────────────────────────────
+    la = fig.add_axes([L0,BY,L1-L0,BH], zorder=6, facecolor="#070D1B")
+    la.set_xlim(0,100); la.set_ylim(0,100); la.axis("off")
+
+    ia = fig.add_axes([L0+.018, BY+BH*.565, (L1-L0)-.030, BH*.385], zorder=7)
+    ia.set_xlim(-1.4,1.4); ia.set_ylim(-1.4,1.4); ia.axis("off")
+    _draw_icon(ia, 0, 0, 0.84, icon_type)
+
+    la.text(50, 52, f"{loc['temp']}\u00b0",
+            ha="center", va="center", fontsize=72, color=tc,
+            fontfamily=F, fontweight="bold",
+            path_effects=[pe.withStroke(linewidth=6, foreground=BG)])
+    la.text(50, 37, f"FEELS LIKE  {loc['feels_like']}\u00b0F",
+            ha="center", va="center", fontsize=9, color=MUT,
+            fontfamily=F, fontweight="bold")
+
+    # Hi/Lo box
+    la.add_patch(FancyBboxPatch((5,25),(90),(10),
+                                 boxstyle="round,pad=0.5",
+                                 facecolor="#0B1C2E", edgecolor=DIV, lw=1.2, zorder=4))
+    la.plot([50,50],[26,34], color=DIV, lw=1.2, zorder=5)
+    la.text(26, 30.5, f"H  {loc['temp_high']}\u00b0",
+            ha="center", va="center", fontsize=12,
+            color=_tcol(loc["temp_high"]), fontfamily=F, fontweight="bold", zorder=6)
+    la.text(74, 30.5, f"L  {loc['temp_low']}\u00b0",
+            ha="center", va="center", fontsize=12,
+            color=_tcol(loc["temp_low"]), fontfamily=F, fontweight="bold", zorder=6)
+
+    # Temp range bar
+    la.text(50, 21, "TODAY'S  RANGE", ha="center", fontsize=7.5, color=MUT, fontfamily=F)
+    _temp_bar(la, loc["temp"], loc["temp_low"], loc["temp_high"])
+    la.text(10, 6.5, f"{loc['temp_low']}\u00b0", fontsize=7.5,
+            color=_tcol(loc["temp_low"]), fontfamily=F, fontweight="bold")
+    la.text(90, 6.5, f"{loc['temp_high']}\u00b0", ha="right", fontsize=7.5,
+            color=_tcol(loc["temp_high"]), fontfamily=F, fontweight="bold")
+    la.text(50, 2.5, f"NOW: {loc['temp']}\u00b0F", ha="center", fontsize=7,
+            color=WH, fontfamily=F)
+
+    # ── MID: gauges + compass + KPIs ─────────────────────────────────────────
+    ma = fig.add_axes([M0,BY,M1-M0,BH], zorder=6, facecolor="#060C18")
+    ma.set_xlim(0,100); ma.set_ylim(0,100); ma.axis("off")
+    ma.text(50, 96.5, "CURRENT  CONDITIONS", ha="center", va="top",
+            fontsize=8.5, color=ACC, fontweight="bold", fontfamily=F)
+
+    g1 = fig.add_axes([M0+.005, BY+BH*.57, (M1-M0)*.46, BH*.36], zorder=7)
+    g1.set_xlim(-1.3,1.3); g1.set_ylim(-1.1,1.0); g1.axis("off")
+    _gauge(g1, loc["humidity"], 0, 100, ACC, "HUMIDITY", "%")
+
+    g2 = fig.add_axes([M0+(M1-M0)*.50, BY+BH*.57, (M1-M0)*.46, BH*.36], zorder=7)
+    g2.set_xlim(-1.3,1.3); g2.set_ylim(-1.1,1.0); g2.axis("off")
+    _gauge(g2, loc["uv_index"], 0, 11, uvc, "UV  INDEX", "")
+    g2.text(0, -1.06, uvlbl, ha="center", va="top",
+            fontsize=7, color=uvc, fontweight="bold", fontfamily=F)
+
+    ca = fig.add_axes([M0+.012, BY+BH*.06, (M1-M0)*.44, BH*.46], zorder=7)
+    ca.set_xlim(-1.9,1.9); ca.set_ylim(-1.9,1.9); ca.axis("off")
+    _compass(ca, wind_deg, loc["wind_speed"], loc["wind_dir"])
+
+    kpi_ax = fig.add_axes([M0+(M1-M0)*.50, BY+BH*.04, (M1-M0)*.48, BH*.50], zorder=7)
+    kpi_ax.set_xlim(0,100); kpi_ax.set_ylim(0,100); kpi_ax.axis("off")
+    for lbl, val, ky in [
+        ("HUMIDITY",   f"{loc['humidity']}%",        97),
+        ("WIND",       f"{loc['wind_speed']} mph",   77),
+        ("VISIBILITY", f"{loc['visibility']} mi",    57),
+        ("DEW POINT",  f"{loc['dew_point']}\u00b0F", 37),
+        ("PRESSURE",   f"{loc['pressure']} hPa",     17),
+    ]:
+        kpi_ax.add_patch(FancyBboxPatch((1,ky-18),(98),(17.5),
+                                         boxstyle="round,pad=0.8",
+                                         facecolor="#0B1C2E", edgecolor=DIV, lw=0.9, zorder=4))
+        kpi_ax.text(50, ky-5,  lbl, ha="center", va="center",
+                    fontsize=6.5, color=MUT, fontfamily=F, zorder=6)
+        kpi_ax.text(50, ky-13, val, ha="center", va="center",
+                    fontsize=11, color=WH, fontweight="bold", fontfamily=F, zorder=6)
+
+    # ── RIGHT: sky & atmosphere ───────────────────────────────────────────────
+    ra = fig.add_axes([R0,BY,R1-R0,BH], zorder=6, facecolor="#070D1B")
+    ra.set_xlim(0,100); ra.set_ylim(0,100); ra.axis("off")
+    ra.text(50, 96.5, "SKY  &  ATMOSPHERE", ha="center", va="top",
+            fontsize=8.5, color=ACC, fontweight="bold", fontfamily=F, clip_on=False)
+
+    # Precip bar
+    ra.text(50, 89.5, "PRECIP  CHANCE", ha="center", fontsize=7.5, color=MUT, fontfamily=F)
+    ra.add_patch(FancyBboxPatch((6,80),(88),(8),
+                                 boxstyle="round,pad=0.4", facecolor=DIV, zorder=4))
+    if loc["pop"] > 0:
+        ra.add_patch(FancyBboxPatch((6,80),(88*loc["pop"]/100),(8),
+                                     boxstyle="round,pad=0.4", facecolor=ACC, zorder=5))
+    ra.text(50, 75.5, f"{loc['pop']}%", ha="center", fontsize=14,
+            color=ACC, fontweight="bold", fontfamily=F, zorder=10)
+
+    # Cloud cover bar
+    ra.text(50, 70, "CLOUD  COVER", ha="center", fontsize=7.5, color=MUT, fontfamily=F)
+    ra.add_patch(FancyBboxPatch((6,61),(88),(8),
+                                 boxstyle="round,pad=0.4", facecolor=DIV, zorder=4))
+    if loc["cloud_cover"] > 0:
+        ra.add_patch(FancyBboxPatch((6,61),(88*loc["cloud_cover"]/100),(8),
+                                     boxstyle="round,pad=0.4", facecolor="#607898", zorder=5))
+    ra.text(50, 57, f"{loc['cloud_cover']}%", ha="center", fontsize=14,
+            color=WH if loc["cloud_cover"] >= 50 else MUT,
+            fontweight="bold", fontfamily=F)
+
+    # Sunrise / Sunset side by side
+    for bx, label, val, col in [
+        (4,  "SUNRISE", _fmt_time(loc["sunrise"]), "#FFD60A"),
+        (52, "SUNSET",  _fmt_time(loc["sunset"]),  "#F97316"),
+    ]:
+        ra.add_patch(FancyBboxPatch((bx,46),(44),(10),
+                                     boxstyle="round,pad=0.4",
+                                     facecolor="#0B1C2E", edgecolor=DIV, lw=0.9, zorder=4))
+        ra.text(bx+22, 53,   label, ha="center", fontsize=6.5, color=MUT, fontfamily=F, zorder=10, clip_on=False)
+        ra.text(bx+22, 47.5, val,   ha="center", fontsize=11,
+                color=col, fontweight="bold", fontfamily=F, zorder=10, clip_on=False)
+
+    # 3 bottom metric boxes
+    for bx, lbl, val in [
+        (4,   "DEW  POINT",  f"{loc['dew_point']}\u00b0F"),
+        (35.5,"PRESSURE",    f"{loc['pressure']} hPa"),
+        (67,  "VISIBILITY",  f"{loc['visibility']} mi"),
+    ]:
+        ra.add_patch(FancyBboxPatch((bx,28),(29),(14),
+                                     boxstyle="round,pad=0.4",
+                                     facecolor="#0B1C2E", edgecolor=DIV, lw=0.9, zorder=4))
+        ra.text(bx+14.5, 39,   lbl, ha="center", fontsize=6,   color=MUT, fontfamily=F, zorder=10, clip_on=False)
+        ra.text(bx+14.5, 30.5, val, ha="center", fontsize=9.5,
+                color=WH, fontweight="bold", fontfamily=F, zorder=10, clip_on=False)
+
+    # Heat label
+    heat = loc.get("heat_label", "")
+    if heat:
+        ra.add_patch(FancyBboxPatch((15,14),(70),(11),
+                                     boxstyle="round,pad=0.4",
+                                     facecolor="#0B1C2E", edgecolor=DIV, lw=0.9, zorder=4))
+        ra.text(50, 19.5, heat.upper(), ha="center", va="center",
+                fontsize=10, color=_tcol(loc["temp"]),
+                fontweight="bold", fontfamily=F, zorder=10, clip_on=False)
+
+    ra.text(98, .5, "@bdgroves  ·  OpenWeatherMap",
+            ha="right", va="bottom", fontsize=6, color="#2A3F55", fontfamily=F)
+
+    plt.savefig(out, dpi=DPI, bbox_inches="tight",
+                facecolor=BG, edgecolor="none", pad_inches=0.02)
+    plt.close(fig)
+    print(f"  Card saved: {out}")
 
 
-def place_emoji(ax, name, x, y, zoom=0.25, transform=None):
-    """Place a Twemoji PNG at axes coordinates (0-1)."""
-    oi = get_emoji(name, zoom=zoom)
-    if oi is None:
-        return
-    tr = transform or ax.transAxes
-    ab = AnnotationBbox(
-        oi, (x, y),
-        xycoords=tr,
-        frameon=False,
-        box_alignment=(0.5, 0.5),
-    )
-    ax.add_artist(ab)
+# ── 2x2 COMBINED CARD ─────────────────────────────────────────────────────────
+def _render_combined(weather_data: list, report_period: str, timestamp: str, out: str):
+    DPI = 150
+    fig = plt.figure(figsize=(12.0, 13.50), dpi=DPI, facecolor=BG)
+
+    ha = fig.add_axes([0,.965,1,.035], zorder=10)
+    ha.set_xlim(0,1); ha.set_ylim(0,1); ha.axis("off")
+    ha.add_patch(Rectangle((0,0),1,1, facecolor=HDR))
+    ha.add_patch(Rectangle((0,.88),1,.12, facecolor=ACC))
+    period = "Morning" if report_period == "morning" else "Evening"
+    from datetime import datetime as _dt
+    ts = timestamp if timestamp else _dt.now().strftime("%I:%M %p").lstrip("0") + _dt.now().strftime("  %a %b ") + str(_dt.now().day) + ", " + str(_dt.now().year)
+    ha.text(.50,.45, f"Daily Weather  -  {period} Edition   |   {ts}",
+            ha="center", va="center", fontsize=10, color=WH,
+            fontweight="bold", fontfamily=F)
+
+    panel_h = .960 / 2
+    panel_w = 1.0  / 2
+    for idx, loc in enumerate(weather_data[:4]):
+        row = idx // 2
+        col = idx  % 2
+        _render_mini_panel(fig, loc, col*panel_w, .005+(1-row)*panel_h, panel_w, panel_h)
+
+    fa = fig.add_axes([0,0,1,.005], zorder=10)
+    fa.set_xlim(0,1); fa.set_ylim(0,1); fa.axis("off")
+    fa.add_patch(Rectangle((0,0),1,1, facecolor=ACC2, alpha=.6))
+
+    plt.savefig(out, dpi=DPI, bbox_inches="tight",
+                facecolor=BG, edgecolor="none", pad_inches=0.02)
+    plt.close(fig)
+    print(f"  Combined card: {out}")
 
 
-# ── Colors ───────────────────────────────────────────────────────
-BG_COLOR       = "#0D1117"
-CARD_COLOR     = "#161B22"
-CARD_BORDER    = "#30363D"
-ACCENT_BLUE    = "#58A6FF"
-ACCENT_ORANGE  = "#F78166"
-ACCENT_GREEN   = "#3FB950"
-ACCENT_YELLOW  = "#E3B341"
-TEXT_PRIMARY   = "#E6EDF3"
-TEXT_SECONDARY = "#8B949E"
-TEXT_MUTED     = "#484F58"
-GRADIENT_HOT   = "#FF6B35"
-GRADIENT_COOL  = "#58A6FF"
+def _render_mini_panel(fig, loc, x0, y0, pw, ph):
+    PAD       = 0.005
+    icon_type = _pick_icon(loc.get("description",""))
+    uvc, uvlbl = _uv_info(loc["uv_index"])
+    tc        = _tcol(loc["temp"])
+    slabel    = _station_label(loc["name"], loc["temp"])
 
-LOCATION_COLORS = ["#58A6FF", "#3FB950", "#F78166", "#E3B341"]
+    pa = fig.add_axes([x0+PAD, y0+PAD, pw-PAD*2, ph-PAD*2], zorder=3)
+    pa.set_xlim(0,100); pa.set_ylim(0,100); pa.axis("off")
+    pa.add_patch(Rectangle((0,0),100,100, facecolor="#070D1B", zorder=1))
 
-# Emoji name -> asset file mapping
-LOC_EMOJI_NAMES  = ["tree", "national-park", "fire", "gem"]
+    pa.add_patch(Rectangle((0,90),100,10,    facecolor=HDR, zorder=2))
+    pa.add_patch(Rectangle((0,98.5),100,1.5, facecolor=ACC, zorder=3))
+    pa.add_patch(Rectangle((0,90),1.5,10,    facecolor=ACC, zorder=3))
+    pa.text(3,  96,   slabel,                           fontsize=6.5, color=ACC, fontweight="bold", fontfamily=F, va="center")
+    pa.text(3,  91.5, f"{loc['name']}, {loc['state']}", fontsize=10,  color=WH,  fontweight="bold", fontfamily=F, va="center")
+    pa.text(97, 93.5, loc["description"].title(),       fontsize=7,   color=MUT, ha="right",        fontfamily=F, va="center")
 
-STAT_EMOJI_NAMES = [
-    "lightning",    # Hottest
-    "snowflake",    # Coolest
-    "wind",         # Windiest
-    "droplet",      # Most Humid
-    "sun",          # Highest UV
-    "thermometer",  # Temp Spread
-]
+    icon_ax = fig.add_axes([x0+PAD+pw*.03, y0+PAD+ph*.52, pw*.26, ph*.36], zorder=5)
+    icon_ax.set_xlim(-1.4,1.4); icon_ax.set_ylim(-1.4,1.4); icon_ax.axis("off")
+    _draw_icon(icon_ax, 0, 0, 0.86, icon_type)
+
+    pa.text(68, 72, f"{loc['temp']}\u00b0",
+            ha="center", va="center", fontsize=52, color=tc,
+            fontfamily=F, fontweight="bold",
+            path_effects=[pe.withStroke(linewidth=5, foreground="#070D1B")])
+    pa.text(68, 57, f"Feels like  {loc['feels_like']}\u00b0F",
+            ha="center", fontsize=7.5, color=MUT, fontfamily=F)
+
+    pa.add_patch(FancyBboxPatch((3,47),(94),(9.5),
+                                 boxstyle="round,pad=0.4",
+                                 facecolor="#0B1C2E", edgecolor=DIV, lw=1, zorder=4))
+    pa.plot([50,50],[48,55.5], color=DIV, lw=1, zorder=5)
+    pa.text(25, 52, f"H  {loc['temp_high']}\u00b0",
+            ha="center", va="center", fontsize=10,
+            color=_tcol(loc["temp_high"]), fontfamily=F, fontweight="bold", zorder=6)
+    pa.text(75, 52, f"L  {loc['temp_low']}\u00b0",
+            ha="center", va="center", fontsize=10,
+            color=_tcol(loc["temp_low"]), fontfamily=F, fontweight="bold", zorder=6)
+
+    for (bx,by),(lbl,val,vcol) in zip(
+        [(3,36),(52,36),(3,22),(52,22)],
+        [("HUMIDITY",  f"{loc['humidity']}%",                     WH),
+         ("WIND",      f"{loc['wind_speed']} mph {loc['wind_dir']}", WH),
+         ("UV INDEX",  f"{loc['uv_index']}  {uvlbl}",             uvc),
+         ("PRECIP",    f"{loc['pop']}%",                          ACC)],
+    ):
+        pa.add_patch(FancyBboxPatch((bx,by),(44),(12),
+                                     boxstyle="round,pad=0.4",
+                                     facecolor="#0B1C2E", edgecolor=DIV, lw=0.8, zorder=4))
+        pa.text(bx+22, by+8.5, lbl, ha="center", va="center",
+                fontsize=6,   color=MUT, fontfamily=F, zorder=6)
+        pa.text(bx+22, by+3.5, val, ha="center", va="center",
+                fontsize=9,   color=vcol, fontweight="bold", fontfamily=F, zorder=6)
+
+    ticker = (f"Sunrise {_fmt_time(loc['sunrise'])}   |   Sunset {_fmt_time(loc['sunset'])}   |   "
+              f"Dew {loc['dew_point']}\u00b0F   |   Clouds {loc['cloud_cover']}%   |   "
+              f"Pres {loc['pressure']} hPa")
+    pa.add_patch(Rectangle((0,0),100,10,    facecolor=HDR,  zorder=4))
+    pa.add_patch(Rectangle((0,9.2),100,.8,  facecolor=ACC2, alpha=.7, zorder=5))
+    pa.text(50, 4.5, ticker, ha="center", va="center",
+            fontsize=6.2, color=MUT, fontfamily=F, zorder=6)
 
 
-def temp_to_color(temp_f):
-    if temp_f >= 100:   return "#FF2D2D"
-    elif temp_f >= 90:  return "#FF6B35"
-    elif temp_f >= 80:  return "#F78166"
-    elif temp_f >= 70:  return "#E3B341"
-    elif temp_f >= 60:  return "#3FB950"
-    elif temp_f >= 50:  return "#58A6FF"
-    elif temp_f >= 32:  return "#79C0FF"
-    else:               return "#B0D8FF"
+# ── POST TEXT (used by twitter_post.py & bluesky_post.py) ────────────────────
+def build_post_text(weather_data: list, report_period: str, timestamp: str) -> str:
+    """Generate rich social post text from live data."""
+    period   = "Morning" if report_period == "morning" else "Evening"
+    hottest  = max(weather_data, key=lambda x: x["temp"])
+    coldest  = min(weather_data, key=lambda x: x["temp"])
+    windiest = max(weather_data, key=lambda x: x["wind_speed"])
+
+    lines = [f"{period} Weather Report  |  {timestamp}", ""]
+    for loc in weather_data:
+        _, uvlbl = _uv_info(loc["uv_index"])
+        lines.append(
+            f"{loc['name']}, {loc['state']}:  {loc['temp']}F  {loc['description']}  |  "
+            f"H {loc['temp_high']}  L {loc['temp_low']}  |  "
+            f"Wind {loc['wind_speed']} mph {loc['wind_dir']}  |  UV {loc['uv_index']} {uvlbl}"
+        )
+    lines += [
+        "",
+        f"Hottest: {hottest['name']} {hottest['temp']}F  |  "
+        f"Coolest: {coldest['name']} {coldest['temp']}F  |  "
+        f"Windiest: {windiest['name']} {windiest['wind_speed']} mph",
+        "",
+        "#Weather #Lakewood #DeathValley #Reno #GrovelandCA #PNW #DailyWeather",
+    ]
+    return "\n".join(lines)
 
 
-def uv_label(uv):
-    if uv <= 2:    return "Low",       "#3FB950"
-    elif uv <= 5:  return "Moderate",  "#E3B341"
-    elif uv <= 7:  return "High",      "#F78166"
-    elif uv <= 10: return "Very High", "#FF6B35"
-    else:          return "Extreme",   "#FF2D2D"
-
-
+# ── PUBLIC ENTRY POINT ────────────────────────────────────────────────────────
 def create_weather_chart(weather_data, report_period, timestamp,
                          output_path="weather_report.png"):
-    fig = plt.figure(figsize=(16, 18), facecolor=BG_COLOR)
-    outer = gridspec.GridSpec(
-        5, 1, figure=fig,
-        hspace=0.38, top=0.95, bottom=0.03,
-        left=0.04, right=0.96,
-        height_ratios=[0.6, 3.4, 2.2, 2.0, 0.5],
-    )
-
-    _draw_header(fig, outer[0], report_period, timestamp)
-    _draw_location_cards(fig, outer[1], weather_data)
-    _draw_comparison_bars(fig, outer[2], weather_data)
-    _draw_fun_stats(fig, outer[3], weather_data)
-    _draw_footer(fig, outer[4])
-
-    plt.savefig(output_path, dpi=150, bbox_inches="tight",
-                facecolor=BG_COLOR, edgecolor="none")
-    plt.close(fig)
-    print(f"Chart saved to {output_path}")
-
-
-def _draw_header(fig, spec, report_period, timestamp):
-    ax = fig.add_subplot(spec)
-    ax.set_facecolor(BG_COLOR)
-    ax.axis("off")
-
-    period_word  = "Morning" if report_period == "morning" else "Evening"
-    emoji_name   = "sunrise2" if report_period == "morning" else "moon"
-
-    # Emoji left of title
-    place_emoji(ax, emoji_name, x=0.08, y=0.72, zoom=0.30)
-
-    ax.text(0.5, 0.75,
-        f"Daily Weather Report  \u2014  {period_word} Edition",
-        transform=ax.transAxes, ha="center", va="center",
-        fontsize=22, fontweight="bold", color=TEXT_PRIMARY,
-        fontfamily="monospace")
-
-    ax.text(0.5, 0.18,
-        f"Lakewood WA  \u00B7  Groveland CA  \u00B7  "
-        f"Death Valley CA  \u00B7  Reno NV"
-        f"      \u23F0 {timestamp}",
-        transform=ax.transAxes, ha="center", va="center",
-        fontsize=11, color=TEXT_SECONDARY)
-
-    ax.axhline(y=0.02, xmin=0.05, xmax=0.95,
-               color=CARD_BORDER, linewidth=1.5, alpha=0.8)
-
-
-def _draw_location_cards(fig, spec, weather_data):
-    inner = gridspec.GridSpecFromSubplotSpec(
-        1, 4, subplot_spec=spec, wspace=0.06)
-
-    for i, (loc, color) in enumerate(zip(weather_data, LOCATION_COLORS)):
-        ax = fig.add_subplot(inner[i])
-        ax.set_facecolor(CARD_COLOR)
-        ax.set_xlim(0, 1)
-        ax.set_ylim(0, 1)
-        ax.axis("off")
-
-        for spine in ax.spines.values():
-            spine.set_visible(True)
-            spine.set_color(color)
-            spine.set_linewidth(1.5)
-
-        tc = temp_to_color(loc["temp"])
-        uv_lbl, uv_color = uv_label(loc["uv_index"])
-
-        # Twemoji PNG next to city name
-        place_emoji(ax, LOC_EMOJI_NAMES[i], x=0.14, y=0.957, zoom=0.22)
-
-        # Location name
-        ax.text(0.58, 0.955, loc["display"],
-            ha="center", va="top", fontsize=11, fontweight="bold",
-            color=color, transform=ax.transAxes)
-
-        # Temperature
-        ax.text(0.5, 0.82,
-            f"{loc['temp']}\u00B0F",
-            ha="center", va="top", fontsize=34, fontweight="bold",
-            color=tc, transform=ax.transAxes)
-
-        # Heat label
-        ax.text(0.5, 0.655, loc["heat_label"],
-            ha="center", va="top", fontsize=10,
-            color=tc, transform=ax.transAxes)
-
-        # Description
-        ax.text(0.5, 0.60, loc["description"],
-            ha="center", va="top", fontsize=8.5,
-            color=TEXT_SECONDARY, transform=ax.transAxes)
-
-        ax.axhline(y=0.565, xmin=0.06, xmax=0.94,
-                   color=CARD_BORDER, linewidth=0.8)
-
-        kpis = [
-            ("Feels Like",    f"{loc['feels_like']}\u00B0F"),
-            ("High / Low",    f"{loc['temp_high']}\u00B0F / {loc['temp_low']}\u00B0F"),
-            ("Humidity",      f"{loc['humidity']}%"),
-            ("Wind",          f"{loc['wind_speed']} mph {loc['wind_dir']}"),
-            ("Precip Chance", f"{loc['pop']}%"),
-            ("UV Index",      f"{loc['uv_index']} ({uv_lbl})"),
-            ("Visibility",    f"{loc['visibility']} mi"),
-            ("Sunrise",       loc["sunrise"]),
-            ("Sunset",        loc["sunset"]),
-        ]
-
-        y_start = 0.535
-        row_h   = 0.052
-        for j, (label, value) in enumerate(kpis):
-            y = y_start - j * row_h
-            ax.text(0.06, y, label,
-                ha="left", va="center", fontsize=7.5,
-                color=TEXT_SECONDARY, transform=ax.transAxes)
-            ax.text(0.94, y, value,
-                ha="right", va="center", fontsize=7.5,
-                fontweight="bold", color=TEXT_PRIMARY,
-                transform=ax.transAxes)
-
-        ax.axhline(y=0.055, xmin=0.06, xmax=0.94,
-                   color=CARD_BORDER, linewidth=0.6)
-        ax.text(0.5, 0.028,
-            f"Dew Pt: {loc['dew_point']}\u00B0F  \u00B7  "
-            f"Pressure: {loc['pressure']} hPa  \u00B7  "
-            f"Clouds: {loc['cloud_cover']}%",
-            ha="center", va="center", fontsize=6.5,
-            color=TEXT_MUTED, transform=ax.transAxes)
-
-
-def _draw_comparison_bars(fig, spec, weather_data):
-    inner = gridspec.GridSpecFromSubplotSpec(
-        1, 3, subplot_spec=spec, wspace=0.40)
-
-    labels = [d["display"].split(",")[0] for d in weather_data]
-    x      = np.arange(len(labels))
-
-    # Temperature
-    ax1 = fig.add_subplot(inner[0])
-    ax1.set_facecolor(CARD_COLOR)
-    for spine in ax1.spines.values():
-        spine.set_color(CARD_BORDER)
-    ax1.tick_params(colors=TEXT_SECONDARY, labelsize=8)
-
-    w     = 0.25
-    lows  = [d["temp_low"]  for d in weather_data]
-    temps = [d["temp"]      for d in weather_data]
-    highs = [d["temp_high"] for d in weather_data]
-
-    b1 = ax1.bar(x - w, lows,  w, label="Low",     color=ACCENT_BLUE,   alpha=0.85)
-    b2 = ax1.bar(x,     temps, w, label="Current", color=ACCENT_ORANGE, alpha=0.85)
-    b3 = ax1.bar(x + w, highs, w, label="High",    color=GRADIENT_HOT,  alpha=0.85)
-
-    ax1.set_xticks(x)
-    ax1.set_xticklabels(labels, color=TEXT_SECONDARY, fontsize=8)
-    ax1.set_title("Temperature (\u00B0F)", color=TEXT_PRIMARY, fontsize=10, pad=8)
-    ax1.legend(fontsize=7, labelcolor=TEXT_SECONDARY,
-               facecolor=CARD_COLOR, edgecolor=CARD_BORDER)
-    ax1.set_facecolor(CARD_COLOR)
-
-    for bars in [b1, b2, b3]:
-        for rect in bars:
-            h = rect.get_height()
-            ax1.text(rect.get_x() + rect.get_width() / 2.0,
-                h + 0.4, f"{int(h)}",
-                ha="center", va="bottom", fontsize=6,
-                color=TEXT_SECONDARY)
-
-    # Humidity & Wind
-    ax2 = fig.add_subplot(inner[1])
-    ax2.set_facecolor(CARD_COLOR)
-    for spine in ax2.spines.values():
-        spine.set_color(CARD_BORDER)
-    ax2.tick_params(colors=TEXT_SECONDARY, labelsize=8)
-
-    humidity = [d["humidity"]   for d in weather_data]
-    wind     = [d["wind_speed"] for d in weather_data]
-
-    bh = ax2.bar(x - 0.2, humidity, 0.35,
-                 label="Humidity %", color=ACCENT_BLUE,  alpha=0.85)
-    bw = ax2.bar(x + 0.2, wind,     0.35,
-                 label="Wind mph",   color=ACCENT_GREEN, alpha=0.85)
-
-    ax2.set_xticks(x)
-    ax2.set_xticklabels(labels, color=TEXT_SECONDARY, fontsize=8)
-    ax2.set_title("Humidity % & Wind mph", color=TEXT_PRIMARY, fontsize=10, pad=8)
-    ax2.legend(fontsize=7, labelcolor=TEXT_SECONDARY,
-               facecolor=CARD_COLOR, edgecolor=CARD_BORDER)
-    ax2.set_facecolor(CARD_COLOR)
-
-    for bars in [bh, bw]:
-        for rect in bars:
-            h = rect.get_height()
-            ax2.text(rect.get_x() + rect.get_width() / 2.0,
-                h + 0.3, f"{int(h)}",
-                ha="center", va="bottom", fontsize=6.5,
-                color=TEXT_SECONDARY)
-
-    # UV Index
-    ax3 = fig.add_subplot(inner[2])
-    ax3.set_facecolor(CARD_COLOR)
-    for spine in ax3.spines.values():
-        spine.set_color(CARD_BORDER)
-    ax3.tick_params(colors=TEXT_SECONDARY, labelsize=8)
-
-    uv_vals   = [d["uv_index"] for d in weather_data]
-    uv_colors = [uv_label(u)[1] for u in uv_vals]
-
-    bars = ax3.bar(x, uv_vals, 0.5, color=uv_colors, alpha=0.9)
-    ax3.set_xticks(x)
-    ax3.set_xticklabels(labels, color=TEXT_SECONDARY, fontsize=8)
-    ax3.set_title("UV Index", color=TEXT_PRIMARY, fontsize=10, pad=8)
-    ax3.set_xlim(-0.5, len(labels) - 0.5)
-    ax3.set_facecolor(CARD_COLOR)
-
-    for rect, uv in zip(bars, uv_vals):
-        lbl, _ = uv_label(uv)
-        ax3.text(rect.get_x() + rect.get_width() / 2.0,
-            rect.get_height() + 0.1,
-            f"{uv}  {lbl}",
-            ha="center", va="bottom", fontsize=7,
-            color=TEXT_SECONDARY)
-
-    for level, col in [
-        (3, ACCENT_GREEN), (6, ACCENT_YELLOW), (8, ACCENT_ORANGE)
-    ]:
-        ax3.axhline(y=level, color=col,
-                    linestyle="--", linewidth=0.7, alpha=0.4)
-
-
-def _draw_fun_stats(fig, spec, weather_data):
-    ax = fig.add_subplot(spec)
-    ax.set_facecolor(CARD_COLOR)
-    ax.set_xlim(0, 1)
-    ax.set_ylim(0, 1)
-    ax.axis("off")
-
-    for spine in ax.spines.values():
-        spine.set_visible(True)
-        spine.set_color(CARD_BORDER)
-
-    ax.text(0.5, 0.95,
-        "\u26A1  Fun Stats & Extremes",
-        ha="center", va="top", fontsize=12, fontweight="bold",
-        color=TEXT_PRIMARY, transform=ax.transAxes)
-
-    ax.axhline(y=0.84, xmin=0.02, xmax=0.98,
-               color=CARD_BORDER, linewidth=0.8)
-
-    hottest     = max(weather_data, key=lambda x: x["temp"])
-    coldest     = min(weather_data, key=lambda x: x["temp"])
-    windiest    = max(weather_data, key=lambda x: x["wind_speed"])
-    most_humid  = max(weather_data, key=lambda x: x["humidity"])
-    highest_uv  = max(weather_data, key=lambda x: x["uv_index"])
-    temp_spread = hottest["temp"] - coldest["temp"]
-
-    fun_stats = [
-        {"title": "Hottest Spot",
-         "value": hottest["display"].split(",")[0],
-         "sub":   f"{hottest['temp']}\u00B0F  {hottest['heat_label']}",
-         "color": GRADIENT_HOT},
-        {"title": "Coolest Spot",
-         "value": coldest["display"].split(",")[0],
-         "sub":   f"{coldest['temp']}\u00B0F  {coldest['heat_label']}",
-         "color": GRADIENT_COOL},
-        {"title": "Windiest",
-         "value": windiest["display"].split(",")[0],
-         "sub":   f"{windiest['wind_speed']} mph {windiest['wind_dir']}",
-         "color": ACCENT_GREEN},
-        {"title": "Most Humid",
-         "value": most_humid["display"].split(",")[0],
-         "sub":   f"{most_humid['humidity']}% RH",
-         "color": ACCENT_BLUE},
-        {"title": "Highest UV",
-         "value": highest_uv["display"].split(",")[0],
-         "sub":   f"UV {highest_uv['uv_index']}  {uv_label(highest_uv['uv_index'])[0]}",
-         "color": ACCENT_YELLOW},
-        {"title": "Temp Spread",
-         "value": f"{temp_spread}\u00B0F Range",
-         "sub":   f"{coldest['temp']}\u00B0F  \u2192  {hottest['temp']}\u00B0F",
-         "color": ACCENT_ORANGE},
-    ]
-
-    col_w = 1.0 / len(fun_stats)
-    for i, stat in enumerate(fun_stats):
-        xc = col_w * i + col_w / 2
-
-        # Twemoji PNG for each stat
-        place_emoji(ax, STAT_EMOJI_NAMES[i], x=xc, y=0.72, zoom=0.30)
-
-        ax.text(xc, 0.56, stat["title"],
-            ha="center", va="top", fontsize=8.5,
-            color=TEXT_SECONDARY, transform=ax.transAxes)
-        ax.text(xc, 0.40, stat["value"],
-            ha="center", va="top", fontsize=12, fontweight="bold",
-            color=stat["color"], transform=ax.transAxes)
-        ax.text(xc, 0.22, stat["sub"],
-            ha="center", va="top", fontsize=8,
-            color=TEXT_SECONDARY, transform=ax.transAxes)
-
-        if i < len(fun_stats) - 1:
-            ax.axvline(x=col_w * (i + 1),
-                ymin=0.05, ymax=0.90,
-                color=CARD_BORDER, linewidth=0.8)
-
-
-def _draw_footer(fig, spec):
-    ax = fig.add_subplot(spec)
-    ax.set_facecolor(BG_COLOR)
-    ax.axis("off")
-    ax.text(0.5, 0.70,
-        "Data: OpenWeatherMap API  \u00B7  "
-        "Built with Python & Matplotlib  \u00B7  "
-        "github.com/bdgroves",
-        ha="center", va="center", fontsize=8,
-        color=TEXT_MUTED, transform=ax.transAxes)
-    ax.text(0.5, 0.20,
-        "#Weather #Lakewood #GrovelandCA #DeathValley #Reno #PNW #DailyWeather",
-        ha="center", va="center", fontsize=7.5,
-        color=TEXT_MUTED, transform=ax.transAxes)
+    out_dir = os.path.dirname(os.path.abspath(output_path))
+    for loc in weather_data:
+        slug = loc["name"].lower().replace(" ", "_")
+        _render_card(loc, os.path.join(out_dir, f"weather_{slug}.png"))
+    _render_combined(weather_data, report_period, timestamp, output_path)
+    print(f"All charts saved. Main output: {output_path}")
