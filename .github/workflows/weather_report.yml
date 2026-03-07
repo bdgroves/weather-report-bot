@@ -60,6 +60,14 @@ jobs:
           TIMESTAMP: ${{ steps.report_time.outputs.TIMESTAMP }}
         run: pixi run bluesky
 
+      - name: Commit updated PNGs to repo
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add weather_report.png weather_lakewood.png weather_groveland.png weather_death_valley.png weather_reno.png
+          git diff --staged --quiet || git commit -m "bot: update weather cards [skip ci]"
+          git push
+
       - name: Upload chart artifacts
         uses: actions/upload-artifact@v4
         with:
