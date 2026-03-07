@@ -1,11 +1,57 @@
-import os
+﻿import os
 import sys
+import time
 import tweepy
 
 sys.path.insert(0, os.path.dirname(__file__))
 from weather import get_weather_data
-from chart import build_post_text
+from chart import _uv_info
 
+STATION_HASHTAGS = {
+    "Lakewood":     "#Lakewood #LakewoodWA #WAwx #PNWwx #PNW #Tacoma #wxtwitter",
+    "Groveland":    "#Groveland #GrovelandCA #CAwx #SierraNevada #Yosemite #wxtwitter",
+    "Death Valley": "#DeathValley #DeathValleyNP #CAwx #MojaveDesert #wxtwitter",
+    "Reno":         "#Reno #RenoNV #NVwx #GreatBasin #HighDesert #wxtwitter",
+}
+
+STATION_LABELS = {
+    "Lakewood":     "HOME BASE",
+    "Groveland":    "SIERRA FOOTHILLS",
+    "Death Valley": "EXTREME CONDITIONS",
+    "Reno":         "BIGGEST LITTLE CITY",
+}
+
+def _icon(desc):
+    d = desc.lower()
+    if any(w in d for w in ("thunder", "storm")):           return "⛈"
+    if any(w in d for w in ("rain", "drizzle", "shower")):  return "🌧"
+    if any(w in d for w in ("snow", "sleet")):              return "❄️"
+    if any(w in d for w in ("fog", "mist", "haze")):        return "🌫"
+    if any(w in d for w in ("overcast", "broken")):         return "☁️"
+    if any(w in d for w in ("scattered", "few", "partly")): return "⛅"
+    if any(w in d for w in ("clear", "sunny")):             return "☀️"
+    return "🌤"
+
+def build_station_text(loc, period, timestamp):
+    _, uvlbl = _uv_info(loc["uv_index"])
+    label    = STATION_LABELS.get(loc["name"], loc["name"].upper())
+    ic       = _icon(loc["description"])
+    tags     = STATION_HASHTAGS.get(loc["name"], "")
+    lines = [
+        f"{ic} {loc['name']}, {loc['state']} — {label}",
+        f"{period} Report | {timestamp}",
+        f"🌡 {loc['temp']}°F (Feels {loc['feels_like']}°F)  H {loc['temp_high']}° L {loc['temp_low']}°",
+        f"💧 {loc['humidity']}%  ☔ {loc['pop']}%  💨 {loc['wind_speed']} mph {loc['wind_dir']}",
+        f"🌞 UV {loc['uv_index']} {uvlbl}  ☁️ {loc['cloud_cover']}%  👁 {loc['visibility']} mi",
+        f"🌅 {loc['sunrise']}  🌇 {loc['sunset']}  📊 {loc['pressure']} hPa",
+        "",
+        tags,
+        "#DailyWeather #WeatherReport",
+    ]
+    text = "\n".join(lines)
+    if len(text) > 280:
+        text = text[:277] + "..."
+    return text
 
 def post_to_twitter():
     api_key       = os.environ["TWITTER_API_KEY"]
@@ -15,27 +61,18 @@ def post_to_twitter():
     report_period = os.environ.get("REPORT_PERIOD", "morning")
     timestamp     = os.environ.get("TIMESTAMP", "")
     owm_key       = os.environ.get("OPENWEATHER_API_KEY", "")
+    period        = "Morning" if report_period == "morning" else "Evening"
 
-    # Build rich post text from live data if available, else fallback
-    if owm_key:
-        print("Fetching weather data for post text...")
-        try:
-            weather_data = get_weather_data(owm_key)
-            tweet_text = build_post_text(weather_data, report_period, timestamp)
-        except Exception as e:
-            print(f"  Could not fetch live data for text: {e}")
-            tweet_text = _fallback_text(report_period, timestamp)
-    else:
-        tweet_text = _fallback_text(report_period, timestamp)
+    if not owm_key:
+        print("ERROR: OPENWEATHER_API_KEY not set")
+        return
 
-    # Twitter 280 char limit
-    if len(tweet_text) > 280:
-        tweet_text = tweet_text[:277] + "..."
+    print("Fetching weather data...")
+    weather_data = get_weather_data(owm_key)
 
     auth = tweepy.OAuthHandler(api_key, api_secret)
     auth.set_access_token(access_token, access_secret)
     api_v1 = tweepy.API(auth)
-
     client = tweepy.Client(
         consumer_key=api_key,
         consumer_secret=api_secret,
@@ -43,33 +80,34 @@ def post_to_twitter():
         access_token_secret=access_secret,
     )
 
-    # Upload up to 4 images: combined + 3 individual station cards
-    images = [
-        "weather_report.png",
-        "weather_lakewood.png",
-        "weather_death_valley.png",
-        "weather_reno.png",
-    ]
-    media_ids = []
-    for img in images:
-        if os.path.exists(img):
-            print(f"Uploading {img}...")
-            media = api_v1.media_upload(img)
-            media_ids.append(media.media_id)
+    lead_id = None
+    if os.path.exists("weather_report.png"):
+        lead_text = (
+            f"{period} Weather Report  |  {timestamp}\n"
+            f"Lakewood WA  ·  Groveland CA  ·  Death Valley CA  ·  Reno NV\n\n"
+            f"#WAwx #CAwx #NVwx #PNWwx #PNW #wxtwitter #DailyWeather #WeatherReport"
+        )
+        print("Posting combined card (lead tweet)...")
+        media   = api_v1.media_upload("weather_report.png")
+        resp    = client.create_tweet(text=lead_text, media_ids=[media.media_id])
+        lead_id = resp.data["id"]
+        print(f"  Lead tweet ID: {lead_id}")
+        time.sleep(90)
 
-    print("Posting tweet...")
-    response = client.create_tweet(text=tweet_text, media_ids=media_ids)
-    print(f"Tweet posted! ID: {response.data['id']}")
-
-
-def _fallback_text(report_period, timestamp):
-    period = "Morning" if report_period == "morning" else "Evening"
-    return (
-        f"{period} Weather Report  |  {timestamp}\n"
-        f"Lakewood WA  |  Groveland CA  |  Death Valley CA  |  Reno NV\n"
-        f"#WAwx #CAwx #NVwx #PNWwx #PNW #DailyWeather #WeatherReport"
-    )
-
+    for loc in weather_data:
+        slug     = loc["name"].lower().replace(" ", "_")
+        img_path = f"weather_{slug}.png"
+        if not os.path.exists(img_path):
+            continue
+        text = build_station_text(loc, period, timestamp)
+        print(f"Posting {loc['name']}... ({len(text)} chars)")
+        media  = api_v1.media_upload(img_path)
+        kwargs = dict(text=text, media_ids=[media.media_id])
+        if lead_id:
+            kwargs["in_reply_to_tweet_id"] = lead_id
+        resp = client.create_tweet(**kwargs)
+        print(f"  Posted: {resp.data['id']}")
+        time.sleep(90)
 
 if __name__ == "__main__":
     post_to_twitter()
