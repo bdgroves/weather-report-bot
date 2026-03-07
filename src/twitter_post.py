@@ -28,7 +28,7 @@ def post_to_twitter():
     else:
         tweet_text = _fallback_text(report_period, timestamp)
 
-    # Twitter has a 280 char limit — truncate gracefully if needed
+    # Twitter 280 char limit
     if len(tweet_text) > 280:
         tweet_text = tweet_text[:277] + "..."
 
@@ -43,11 +43,22 @@ def post_to_twitter():
         access_token_secret=access_secret,
     )
 
-    print("Uploading image to Twitter...")
-    media = api_v1.media_upload("weather_report.png")
+    # Upload up to 4 images: combined + 3 individual station cards
+    images = [
+        "weather_report.png",
+        "weather_lakewood.png",
+        "weather_death_valley.png",
+        "weather_reno.png",
+    ]
+    media_ids = []
+    for img in images:
+        if os.path.exists(img):
+            print(f"Uploading {img}...")
+            media = api_v1.media_upload(img)
+            media_ids.append(media.media_id)
 
     print("Posting tweet...")
-    response = client.create_tweet(text=tweet_text, media_ids=[media.media_id])
+    response = client.create_tweet(text=tweet_text, media_ids=media_ids)
     print(f"Tweet posted! ID: {response.data['id']}")
 
 
@@ -55,8 +66,8 @@ def _fallback_text(report_period, timestamp):
     period = "Morning" if report_period == "morning" else "Evening"
     return (
         f"{period} Weather Report  |  {timestamp}\n"
-        f"Lakewood WA  |  Groveland CA  |  Death Valley CA  |  Reno NV\n\n"
-        f"#Weather #Lakewood #DeathValley #Reno #GrovelandCA #PNW #DailyWeather"
+        f"Lakewood WA  |  Groveland CA  |  Death Valley CA  |  Reno NV\n"
+        f"#WAwx #CAwx #NVwx #PNWwx #PNW #DailyWeather #WeatherReport"
     )
 
 

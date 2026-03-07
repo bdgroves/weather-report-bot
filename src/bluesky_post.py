@@ -53,7 +53,7 @@ def post_to_bluesky():
     else:
         post_text = _fallback_text(report_period, timestamp)
 
-    # BlueSky has a 300 grapheme limit
+    # BlueSky 300 grapheme limit
     if len(post_text) > 300:
         post_text = post_text[:297] + "..."
 
@@ -62,8 +62,20 @@ def post_to_bluesky():
     print("Authenticating with BlueSky...")
     session = create_session(handle, password)
 
-    print("Uploading image to BlueSky...")
-    blob = upload_image(session, "weather_report.png")
+    # Upload up to 4 images: combined + 3 individual station cards
+    image_files = [
+        ("weather_report.png",       f"{period} weather report — all 4 stations"),
+        ("weather_lakewood.png",     f"Lakewood, WA — {period.lower()} conditions"),
+        ("weather_death_valley.png", f"Death Valley, CA — {period.lower()} conditions"),
+        ("weather_reno.png",         f"Reno, NV — {period.lower()} conditions"),
+    ]
+
+    images_embed = []
+    for img_path, alt_text in image_files:
+        if os.path.exists(img_path):
+            print(f"Uploading {img_path}...")
+            blob = upload_image(session, img_path)
+            images_embed.append({"image": blob, "alt": alt_text})
 
     print("Posting to BlueSky...")
     post_record = {
@@ -72,15 +84,7 @@ def post_to_bluesky():
         "createdAt": datetime.now(timezone.utc).isoformat(),
         "embed": {
             "$type": "app.bsky.embed.images",
-            "images": [
-                {
-                    "image": blob,
-                    "alt": (
-                        f"{period} weather report for "
-                        f"Lakewood WA, Groveland CA, Death Valley CA, Reno NV"
-                    ),
-                }
-            ],
+            "images": images_embed,
         },
     }
 
@@ -104,8 +108,8 @@ def _fallback_text(report_period, timestamp):
     period = "Morning" if report_period == "morning" else "Evening"
     return (
         f"{period} Weather Report  |  {timestamp}\n"
-        f"Lakewood WA  |  Groveland CA  |  Death Valley CA  |  Reno NV\n\n"
-        f"#Weather #Lakewood #DeathValley #Reno #GrovelandCA #PNW #DailyWeather"
+        f"Lakewood WA  |  Groveland CA  |  Death Valley CA  |  Reno NV\n"
+        f"#WAwx #CAwx #NVwx #PNWwx #PNW #DailyWeather #WeatherReport"
     )
 
 
