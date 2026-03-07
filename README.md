@@ -1,11 +1,3 @@
-Twister-Vibes README! 🌪️
-First let's save the chart to the repo so it shows in the README:
-powershellCopy# Copy the latest chart into an assets folder for the README
-New-Item -ItemType Directory -Force -Path "assets\samples"
-Copy-Item "weather_report.png" -Destination "assets\samples\latest_report.png"
-
-Write the README
-powershellCopy$readme = @'
 # 🌪️ Weather Report Bot
 
 > *"It's already here."* — Jo Harding, Twister (1996)
