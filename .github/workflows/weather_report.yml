@@ -60,9 +60,14 @@ jobs:
           TIMESTAMP: ${{ steps.report_time.outputs.TIMESTAMP }}
         run: pixi run bluesky
 
-      - name: Upload chart artifact
+      - name: Upload chart artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: weather-chart
-          path: weather_report.png
+          name: weather-charts
+          path: |
+            weather_report.png
+            weather_lakewood.png
+            weather_groveland.png
+            weather_death_valley.png
+            weather_reno.png
           retention-days: 7
