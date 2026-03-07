@@ -49,8 +49,8 @@ def build_station_text(loc, period, timestamp):
         "#DailyWeather #WeatherReport",
     ]
     text = "\n".join(lines)
-    if len(text) > 280:
-        text = text[:277] + "..."
+    if len(text) > 260:
+        text = text[:257] + "..."
     return text
 
 def post_to_twitter():
@@ -88,6 +88,8 @@ def post_to_twitter():
             f"#WAwx #CAwx #NVwx #PNWwx #PNW #wxtwitter #DailyWeather #WeatherReport"
         )
         print("Posting combined card (lead tweet)...")
+        print(f"  File exists: {os.path.exists(chr(39)weather_report.png{chr(39)}}")
+        print(f"  File size: {os.path.getsize(chr(39)weather_report.png{chr(39)}) if os.path.exists(chr(39)weather_report.png{chr(39)}) else 0} bytes")
         media   = api_v1.media_upload("weather_report.png")
         resp    = client.create_tweet(text=lead_text, media_ids=[media.media_id])
         lead_id = resp.data["id"]
@@ -111,3 +113,5 @@ def post_to_twitter():
 
 if __name__ == "__main__":
     post_to_twitter()
+
+
