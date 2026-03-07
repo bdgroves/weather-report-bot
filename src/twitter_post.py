@@ -38,19 +38,19 @@ def build_station_text(loc, period, timestamp):
     ic       = _icon(loc["description"])
     tags     = STATION_HASHTAGS.get(loc["name"], "")
     lines = [
-        f"{ic} {loc['name']}, {loc['state']} — {label}",
+        f"{ic} {loc['name']}, {loc['state']} - {label}",
         f"{period} Report | {timestamp}",
-        f"🌡 {loc['temp']}°F (Feels {loc['feels_like']}°F)  H {loc['temp_high']}° L {loc['temp_low']}°",
-        f"💧 {loc['humidity']}%  ☔ {loc['pop']}%  💨 {loc['wind_speed']} mph {loc['wind_dir']}",
-        f"🌞 UV {loc['uv_index']} {uvlbl}  ☁️ {loc['cloud_cover']}%  👁 {loc['visibility']} mi",
-        f"🌅 {loc['sunrise']}  🌇 {loc['sunset']}  📊 {loc['pressure']} hPa",
+        f"Temp: {loc['temp']}F (Feels {loc['feels_like']}F) H {loc['temp_high']} L {loc['temp_low']}",
+        f"Humidity: {loc['humidity']}% Precip: {loc['pop']}% Wind: {loc['wind_speed']} mph {loc['wind_dir']}",
+        f"UV: {loc['uv_index']} {uvlbl} Clouds: {loc['cloud_cover']}% Vis: {loc['visibility']} mi",
+        f"Sunrise: {loc['sunrise']} Sunset: {loc['sunset']}",
         "",
         tags,
         "#DailyWeather #WeatherReport",
     ]
     text = "\n".join(lines)
-    if len(text) > 260:
-        text = text[:257] + "..."
+    if len(text) > 270:
+        text = text[:267] + "..."
     return text
 
 def post_to_twitter():
@@ -83,13 +83,11 @@ def post_to_twitter():
     lead_id = None
     if os.path.exists("weather_report.png"):
         lead_text = (
-            f"{period} Weather Report  |  {timestamp}\n"
-            f"Lakewood WA  ·  Groveland CA  ·  Death Valley CA  ·  Reno NV\n\n"
+            f"{period} Weather Report | {timestamp}\n"
+            f"Lakewood WA - Groveland CA - Death Valley CA - Reno NV\n\n"
             f"#WAwx #CAwx #NVwx #PNWwx #PNW #wxtwitter #DailyWeather #WeatherReport"
         )
         print("Posting combined card (lead tweet)...")
-        print(f"  File exists: {os.path.exists(chr(39)weather_report.png{chr(39)}}")
-        print(f"  File size: {os.path.getsize(chr(39)weather_report.png{chr(39)}) if os.path.exists(chr(39)weather_report.png{chr(39)}) else 0} bytes")
         media   = api_v1.media_upload("weather_report.png")
         resp    = client.create_tweet(text=lead_text, media_ids=[media.media_id])
         lead_id = resp.data["id"]
@@ -113,5 +111,3 @@ def post_to_twitter():
 
 if __name__ == "__main__":
     post_to_twitter()
-
-
