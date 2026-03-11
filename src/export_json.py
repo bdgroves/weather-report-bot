@@ -6,7 +6,15 @@ Run after chart.py generates cards.
 import json
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
+try:
+    import pytz
+    _PT = pytz.timezone("America/Los_Angeles")
+    def _now_pt():
+        return datetime.now(_PT)
+except ImportError:
+    def _now_pt():
+        return datetime.now(timezone.utc)
 
 sys.path.insert(0, os.path.dirname(__file__))
 from weather import get_weather_data
@@ -33,9 +41,9 @@ def export_weather_json(owm_key, report_period="morning", timestamp=""):
             print(f"  Forecast fetch failed (skipping): {e}")
 
     output = {
-        "timestamp":     timestamp or datetime.now().strftime("%-I:%M %p PT · %b %-d, %Y"),
+        "timestamp":     timestamp or _now_pt().strftime("%-I:%M %p PT · %b %-d, %Y"),
         "report_period": report_period,
-        "generated_at":  datetime.utcnow().isoformat() + "Z",
+        "generated_at":  datetime.now(timezone.utc).isoformat() + "Z",
         "stations":      weather_data,
         "forecast":      forecast_data,
     }
