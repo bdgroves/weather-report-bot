@@ -89,7 +89,9 @@ jobs:
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          git stash --include-untracked
           git pull --rebase origin main
+          git stash pop || true
           git add -f weather_*.png weather_data.json
           git diff --cached --quiet && echo "No changes to commit" || \
             git commit -m "chore: update weather data [skip ci]"
