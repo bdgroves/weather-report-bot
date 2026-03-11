@@ -18,18 +18,9 @@
     --muted:   #4A6480;
     --text:    #C8DCF0;
     --white:   #EDF3FA;
-    --alert:   #CC2200;
-
-    --t-hot:   #FF3333;
-    --t-warm:  #FF6B35;
-    --t-mild:  #E3B341;
-    --t-cool:  #3CB86B;
-    --t-cold:  #58A6FF;
-    --t-freeze:#79C0FF;
+    --alert:   #CC4400;
   }
-
   * { box-sizing: border-box; margin: 0; padding: 0; }
-
   body {
     background: var(--bg);
     color: var(--text);
@@ -37,298 +28,149 @@
     min-height: 100vh;
     overflow-x: hidden;
   }
-
-  /* Background grid texture */
   body::before {
     content: '';
-    position: fixed;
-    inset: 0;
+    position: fixed; inset: 0;
     background-image:
       linear-gradient(rgba(56,189,248,.03) 1px, transparent 1px),
       linear-gradient(90deg, rgba(56,189,248,.03) 1px, transparent 1px);
     background-size: 40px 40px;
-    pointer-events: none;
-    z-index: 0;
+    pointer-events: none; z-index: 0;
   }
-
   .wrap { position: relative; z-index: 1; max-width: 1400px; margin: 0 auto; padding: 0 20px; }
 
-  /* ── HEADER ── */
+  /* HEADER */
   header {
     border-bottom: 1px solid var(--border);
     background: linear-gradient(180deg, #060E1E 0%, transparent 100%);
     position: sticky; top: 0; z-index: 100;
+    backdrop-filter: blur(8px);
   }
-  .header-inner {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 14px 24px;
-  }
+  .header-inner { display: flex; align-items: center; justify-content: space-between; padding: 14px 24px; }
   .brand { display: flex; align-items: center; gap: 14px; }
   .brand-dot {
     width: 10px; height: 10px; border-radius: 50%;
-    background: var(--acc);
-    box-shadow: 0 0 12px var(--acc);
+    background: var(--acc); box-shadow: 0 0 12px var(--acc);
     animation: pulse 2s ease-in-out infinite;
   }
-  @keyframes pulse {
-    0%,100% { opacity:1; transform:scale(1); }
-    50%      { opacity:.5; transform:scale(.85); }
-  }
-  .brand-name {
-    font-family: 'Barlow Condensed', sans-serif;
-    font-size: 1.3rem; font-weight: 700; letter-spacing: .08em;
-    color: var(--white); text-transform: uppercase;
-  }
-  .brand-sub { font-size: .72rem; color: var(--muted); letter-spacing: .12em; }
+  @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.5;transform:scale(.85)} }
+  .brand-name { font-family:'Barlow Condensed',sans-serif; font-size:1.3rem; font-weight:700; letter-spacing:.08em; color:var(--white); text-transform:uppercase; }
+  .brand-sub  { font-size:.72rem; color:var(--muted); letter-spacing:.12em; }
+  .last-update { font-size:.75rem; color:var(--muted); }
+  .last-update span { color:var(--acc); font-weight:500; }
 
-  .header-right { display: flex; align-items: center; gap: 20px; }
-  .last-update { font-size: .75rem; color: var(--muted); }
-  .last-update span { color: var(--acc); font-weight: 500; }
+  /* HERO */
+  .hero { padding: 28px 24px 0; display:flex; align-items:flex-end; justify-content:space-between; gap:16px; }
+  .hero-title { font-family:'Barlow Condensed',sans-serif; font-size:2.8rem; font-weight:900; letter-spacing:.04em; color:var(--white); text-transform:uppercase; line-height:1; }
+  .hero-title span { color:var(--acc); }
+  .hero-meta { font-size:.8rem; color:var(--muted); padding-bottom:4px; }
 
-  /* ── HERO STRIP ── */
-  .hero {
-    padding: 28px 24px 0;
-    display: flex; align-items: flex-end; justify-content: space-between;
-    gap: 16px;
+  /* EXTREMES BAR */
+  .extremes-bar {
+    display:flex; gap:12px; flex-wrap:wrap;
+    padding:12px 24px; margin-top:16px;
+    border-top:1px solid var(--border); border-bottom:1px solid var(--border);
+    background:rgba(0,0,0,.25); font-size:.78rem;
   }
-  .hero-title {
-    font-family: 'Barlow Condensed', sans-serif;
-    font-size: 2.8rem; font-weight: 900; letter-spacing: .04em;
-    color: var(--white); text-transform: uppercase; line-height: 1;
-  }
-  .hero-title span { color: var(--acc); }
-  .hero-meta { font-size: .8rem; color: var(--muted); padding-bottom: 4px; }
+  .extreme-item { display:flex; gap:6px; align-items:center; }
+  .extreme-label { color:var(--muted); }
+  .extreme-value { color:var(--white); font-weight:600; }
 
-  /* ── STATION GRID ── */
-  .stations {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: 16px;
-    padding: 20px 24px;
-  }
+  /* STATIONS GRID */
+  .stations { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:16px; padding:20px 24px; }
 
   .station-card {
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    overflow: hidden;
-    transition: border-color .2s, transform .2s;
-    animation: fadeUp .5s ease both;
+    background:var(--panel); border:1px solid var(--border); border-radius:12px; overflow:hidden;
+    transition:border-color .2s, transform .2s;
+    animation:fadeUp .5s ease both;
   }
-  .station-card:hover {
-    border-color: var(--acc2);
-    transform: translateY(-2px);
-  }
-  @keyframes fadeUp {
-    from { opacity:0; transform:translateY(16px); }
-    to   { opacity:1; transform:translateY(0); }
-  }
-  .station-card:nth-child(1) { animation-delay: .05s; }
-  .station-card:nth-child(2) { animation-delay: .10s; }
-  .station-card:nth-child(3) { animation-delay: .15s; }
-  .station-card:nth-child(4) { animation-delay: .20s; }
+  .station-card:hover { border-color:var(--acc2); transform:translateY(-2px); }
+  @keyframes fadeUp { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
+  .station-card:nth-child(1){animation-delay:.05s}
+  .station-card:nth-child(2){animation-delay:.10s}
+  .station-card:nth-child(3){animation-delay:.15s}
+  .station-card:nth-child(4){animation-delay:.20s}
 
-  .station-card.alert { border-color: var(--alert); }
-  .station-card.alert .card-header { background: linear-gradient(135deg, #1A0505 0%, var(--panel) 100%); }
+  /* WEATHER WATCH BANNER */
+  .watch-banner {
+    display:none; align-items:center; gap:8px;
+    padding:6px 14px; font-size:.72rem; font-weight:700;
+    letter-spacing:.1em; color:white; text-transform:uppercase;
+    background: linear-gradient(90deg, #7A2800, #CC4400);
+    border-bottom:1px solid rgba(255,100,0,.3);
+  }
+  .watch-banner a { color:rgba(255,220,180,.9); text-decoration:none; margin-left:auto; font-size:.68rem; letter-spacing:.08em; }
+  .watch-banner a:hover { color:white; text-decoration:underline; }
+  .station-card.watch .watch-banner { display:flex; }
+  .station-card.watch { border-color: #CC4400; }
 
   .card-header {
-    padding: 14px 16px 10px;
-    border-bottom: 1px solid var(--border);
-    background: linear-gradient(135deg, #0A1828 0%, #060E18 100%);
+    padding:14px 16px 10px; border-bottom:1px solid var(--border);
+    background:linear-gradient(135deg,#0A1828 0%,#060E18 100%);
   }
-  .card-label {
-    font-family: 'Barlow Condensed', sans-serif;
-    font-size: .7rem; font-weight: 700; letter-spacing: .15em;
-    color: var(--acc); text-transform: uppercase;
-  }
-  .card-title {
-    font-family: 'Barlow Condensed', sans-serif;
-    font-size: 1.5rem; font-weight: 700;
-    color: var(--white); line-height: 1.1;
-  }
-  .alert-banner {
-    display: none; align-items: center; gap: 6px;
-    background: var(--alert); padding: 4px 10px;
-    font-size: .7rem; font-weight: 700; letter-spacing: .1em;
-    color: white; text-transform: uppercase;
-  }
-  .station-card.alert .alert-banner { display: flex; }
+  .card-label { font-family:'Barlow Condensed',sans-serif; font-size:.7rem; font-weight:700; letter-spacing:.15em; color:var(--acc); text-transform:uppercase; }
+  .card-title { font-family:'Barlow Condensed',sans-serif; font-size:1.5rem; font-weight:700; color:var(--white); line-height:1.1; }
 
-  /* Main reading area */
-  .card-body { padding: 16px; }
+  .card-body { padding:16px; }
 
-  .temp-row {
-    display: flex; align-items: flex-end; gap: 16px;
-    margin-bottom: 12px;
-  }
-  .temp-big {
-    font-family: 'Barlow Condensed', sans-serif;
-    font-size: 5rem; font-weight: 900; line-height: 1;
-  }
-  .temp-detail { padding-bottom: 8px; }
-  .condition {
-    font-size: .85rem; font-weight: 500; color: var(--white);
-    margin-bottom: 4px;
-  }
-  .feels-like { font-size: .75rem; color: var(--muted); }
-  .hi-lo {
-    font-family: 'Barlow Condensed', sans-serif;
-    font-size: 1rem; font-weight: 600;
-  }
-  .hi-lo .hi { margin-right: 10px; }
+  .temp-row { display:flex; align-items:flex-end; gap:16px; margin-bottom:12px; }
+  .temp-big { font-family:'Barlow Condensed',sans-serif; font-size:5rem; font-weight:900; line-height:1; }
+  .temp-detail { padding-bottom:8px; }
+  .condition { font-size:.85rem; font-weight:500; color:var(--white); margin-bottom:4px; }
+  .feels-like { font-size:.75rem; color:var(--muted); }
+  .hi-lo { font-family:'Barlow Condensed',sans-serif; font-size:1rem; font-weight:600; }
+  .hi-lo .hi { margin-right:10px; }
 
-  /* KPI grid */
-  .kpi-grid {
-    display: grid; grid-template-columns: repeat(3,1fr);
-    gap: 8px; margin-bottom: 12px;
-  }
-  .kpi {
-    background: rgba(255,255,255,.03);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 8px 6px;
-    text-align: center;
-  }
-  .kpi-label {
-    font-size: .6rem; color: var(--muted);
-    letter-spacing: .1em; text-transform: uppercase;
-    margin-bottom: 3px;
-  }
-  .kpi-value {
-    font-family: 'Barlow Condensed', sans-serif;
-    font-size: 1.1rem; font-weight: 700; color: var(--white);
-  }
+  .kpi-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:12px; }
+  .kpi { background:rgba(255,255,255,.03); border:1px solid var(--border); border-radius:8px; padding:8px 6px; text-align:center; }
+  .kpi-label { font-size:.6rem; color:var(--muted); letter-spacing:.1em; text-transform:uppercase; margin-bottom:3px; }
+  .kpi-value { font-family:'Barlow Condensed',sans-serif; font-size:1.1rem; font-weight:700; color:var(--white); }
 
-  /* Sun row */
-  .sun-row {
-    display: flex; gap: 8px; margin-bottom: 12px;
-  }
-  .sun-item {
-    flex: 1; background: rgba(255,255,255,.03);
-    border: 1px solid var(--border); border-radius: 8px;
-    padding: 7px 10px; display: flex; align-items: center; gap: 8px;
-  }
-  .sun-icon { font-size: 1rem; }
-  .sun-label { font-size: .6rem; color: var(--muted); letter-spacing: .08em; }
-  .sun-time  { font-family: 'Barlow Condensed', sans-serif; font-size: 1rem; font-weight: 600; }
+  .sun-row { display:flex; gap:8px; margin-bottom:12px; }
+  .sun-item { flex:1; background:rgba(255,255,255,.03); border:1px solid var(--border); border-radius:8px; padding:7px 10px; display:flex; align-items:center; gap:8px; }
+  .sun-icon { font-size:1rem; }
+  .sun-label { font-size:.6rem; color:var(--muted); letter-spacing:.08em; }
+  .sun-time  { font-family:'Barlow Condensed',sans-serif; font-size:1rem; font-weight:600; }
 
-  /* Precip + cloud bars */
-  .bar-row { margin-bottom: 8px; }
-  .bar-label-row {
-    display: flex; justify-content: space-between;
-    font-size: .65rem; color: var(--muted); margin-bottom: 4px;
-    text-transform: uppercase; letter-spacing: .08em;
-  }
-  .bar-label-row span:last-child { color: var(--white); font-weight: 600; }
-  .bar-track {
-    height: 6px; background: var(--border); border-radius: 3px; overflow: hidden;
-  }
-  .bar-fill {
-    height: 100%; border-radius: 3px;
-    transition: width .8s ease;
-  }
-  .bar-fill.precip { background: linear-gradient(90deg, var(--acc2), #60A5FA); }
-  .bar-fill.clouds { background: linear-gradient(90deg, #4A6480, #7090A8); }
+  .bar-row { margin-bottom:8px; }
+  .bar-label-row { display:flex; justify-content:space-between; font-size:.65rem; color:var(--muted); margin-bottom:4px; text-transform:uppercase; letter-spacing:.08em; }
+  .bar-label-row span:last-child { color:var(--white); font-weight:600; }
+  .bar-track { height:6px; background:var(--border); border-radius:3px; overflow:hidden; }
+  .bar-fill { height:100%; border-radius:3px; transition:width .8s ease; }
+  .bar-fill.precip { background:linear-gradient(90deg,var(--acc2),#60A5FA); }
+  .bar-fill.clouds { background:linear-gradient(90deg,#4A6480,#7090A8); }
 
-  /* ── 7-DAY FORECAST ── */
-  .forecast-strip {
-    border-top: 1px solid var(--border);
-    padding: 10px 14px 12px;
-    background: rgba(0,0,0,.2);
-  }
-  .forecast-label {
-    font-size: .65rem; color: var(--muted); letter-spacing: .12em;
-    text-transform: uppercase; margin-bottom: 8px;
-  }
-  .forecast-days {
-    display: flex; gap: 4px;
-  }
-  .forecast-day {
-    flex: 1; text-align: center;
-    padding: 6px 2px;
-    border-radius: 6px;
-    background: rgba(255,255,255,.02);
-    border: 1px solid transparent;
-    transition: border-color .2s;
-  }
-  .forecast-day:hover { border-color: var(--border); }
-  .forecast-day .f-day {
-    font-size: .6rem; color: var(--muted);
-    letter-spacing: .08em; text-transform: uppercase; margin-bottom: 4px;
-  }
-  .forecast-day .f-icon { font-size: 1.1rem; margin-bottom: 4px; }
-  .forecast-day .f-hi {
-    font-family: 'Barlow Condensed', sans-serif;
-    font-size: .95rem; font-weight: 700;
-  }
-  .forecast-day .f-lo {
-    font-family: 'Barlow Condensed', sans-serif;
-    font-size: .8rem; color: var(--muted);
-  }
-  .forecast-day .f-pop {
-    font-size: .6rem; color: #60A5FA; margin-top: 2px;
-  }
+  /* 7-DAY FORECAST */
+  .forecast-strip { border-top:1px solid var(--border); padding:10px 14px 12px; background:rgba(0,0,0,.2); }
+  .forecast-label { font-size:.65rem; color:var(--muted); letter-spacing:.12em; text-transform:uppercase; margin-bottom:8px; }
+  .forecast-days { display:flex; gap:4px; }
+  .forecast-day { flex:1; text-align:center; padding:6px 2px; border-radius:6px; background:rgba(255,255,255,.02); border:1px solid transparent; transition:border-color .2s; }
+  .forecast-day:hover { border-color:var(--border); }
+  .f-day  { font-size:.6rem; color:var(--muted); letter-spacing:.08em; text-transform:uppercase; margin-bottom:4px; }
+  .f-icon { font-size:1.1rem; margin-bottom:4px; }
+  .f-hi   { font-family:'Barlow Condensed',sans-serif; font-size:.95rem; font-weight:700; }
+  .f-lo   { font-family:'Barlow Condensed',sans-serif; font-size:.8rem; color:var(--muted); }
+  .f-pop  { font-size:.6rem; color:#60A5FA; margin-top:2px; }
 
-  /* ── EXTREMES BAR ── */
-  .extremes-bar {
-    display: flex; gap: 12px; flex-wrap: wrap;
-    padding: 12px 24px; border-top: 1px solid var(--border);
-    border-bottom: 1px solid var(--border);
-    background: rgba(0,0,0,.2);
-    font-size: .78rem;
-  }
-  .extreme-item { display: flex; gap: 6px; align-items: center; }
-  .extreme-label { color: var(--muted); }
-  .extreme-value { color: var(--white); font-weight: 600; }
+  /* FOOTER */
+  footer { border-top:1px solid var(--border); padding:16px 24px; display:flex; justify-content:space-between; align-items:center; font-size:.72rem; color:var(--muted); margin-top:8px; }
+  footer a { color:var(--acc); text-decoration:none; }
 
-  /* ── COMBINED IMAGE ── */
-  .combined-section { padding: 0 24px 24px; }
-  .combined-section h2 {
-    font-family: 'Barlow Condensed', sans-serif;
-    font-size: 1rem; font-weight: 700; letter-spacing: .12em;
-    color: var(--muted); text-transform: uppercase;
-    margin-bottom: 12px; padding-top: 16px;
-  }
-  .combined-img {
-    width: 100%; border-radius: 10px;
-    border: 1px solid var(--border);
-  }
+  .loading { display:flex; align-items:center; justify-content:center; min-height:60vh; font-size:1rem; color:var(--muted); gap:12px; }
+  .spinner { width:20px; height:20px; border:2px solid var(--border); border-top-color:var(--acc); border-radius:50%; animation:spin .8s linear infinite; }
+  @keyframes spin { to{transform:rotate(360deg)} }
+  .no-data { text-align:center; padding:40px; color:var(--muted); }
 
-  /* ── FOOTER ── */
-  footer {
-    border-top: 1px solid var(--border);
-    padding: 16px 24px;
-    display: flex; justify-content: space-between; align-items: center;
-    font-size: .72rem; color: var(--muted);
-  }
-  footer a { color: var(--acc); text-decoration: none; }
-
-  /* ── LOADING / ERROR ── */
-  .loading {
-    display: flex; align-items: center; justify-content: center;
-    min-height: 60vh; font-size: 1rem; color: var(--muted);
-    gap: 12px;
-  }
-  .spinner {
-    width: 20px; height: 20px; border: 2px solid var(--border);
-    border-top-color: var(--acc); border-radius: 50%;
-    animation: spin .8s linear infinite;
-  }
-  @keyframes spin { to { transform: rotate(360deg); } }
-
-  .no-data { text-align: center; padding: 40px; color: var(--muted); }
-
-  /* Responsive */
-  @media (max-width: 600px) {
-    .hero-title { font-size: 1.8rem; }
-    .stations { grid-template-columns: 1fr; padding: 12px; }
-    .hero { flex-direction: column; align-items: flex-start; }
-    .kpi-grid { grid-template-columns: repeat(2,1fr); }
+  @media(max-width:600px){
+    .hero-title{font-size:1.8rem}
+    .stations{grid-template-columns:1fr;padding:12px}
+    .hero{flex-direction:column;align-items:flex-start}
+    .kpi-grid{grid-template-columns:repeat(2,1fr)}
+    .forecast-days{gap:2px}
   }
 </style>
 </head>
 <body>
-
 <header>
   <div class="header-inner">
     <div class="brand">
@@ -338,9 +180,7 @@
         <div class="brand-sub">@bdgroves · West Coast Stations</div>
       </div>
     </div>
-    <div class="header-right">
-      <div class="last-update">Updated <span id="last-update">—</span></div>
-    </div>
+    <div class="last-update">Updated <span id="last-update">—</span></div>
   </div>
 </header>
 
@@ -358,17 +198,11 @@
   <div id="stations-container">
     <div class="loading"><div class="spinner"></div> Loading weather data…</div>
   </div>
-
-  <div class="combined-section">
-    <h2>Combined Station Report</h2>
-    <img class="combined-img" src="weather_report_k5.png" alt="Combined weather report"
-         onerror="this.src='weather_report.png'">
-  </div>
 </div>
 
 <footer>
-  <span>Data: <a href="https://openweathermap.org">OpenWeatherMap</a> · Automation: GitHub Actions</span>
-  <span><a href="https://twitter.com/bdgroves">@bdgroves</a> · <a href="https://bsky.app/profile/bdgroves.bsky.social">BlueSky</a> · <a href="https://github.com/bdgroves/weather-report-bot">GitHub</a></span>
+  <span>Data: <a href="https://openweathermap.org">OpenWeatherMap</a> · Automation: GitHub Actions · Updated twice daily</span>
+  <span><a href="https://twitter.com/bdgroves">@bdgroves on X</a> · <a href="https://bsky.app/profile/bdgroves.bsky.social">BlueSky</a> · <a href="https://github.com/bdgroves/weather-report-bot">GitHub</a></span>
 </footer>
 
 <script>
@@ -383,48 +217,57 @@ const UV_INFO = u =>
   ['#22C55E','LOW'];
 
 const FORECAST_ICONS = desc => {
-  const d = desc.toLowerCase();
-  if (/thunder|storm/.test(d))          return '⛈';
-  if (/rain|drizzle|shower/.test(d))    return '🌧';
-  if (/snow|sleet/.test(d))             return '❄️';
-  if (/fog|mist|haze/.test(d))          return '🌫';
-  if (/overcast|broken/.test(d))        return '☁️';
-  if (/scattered|few|partly/.test(d))   return '⛅';
-  if (/clear|sunny/.test(d))            return '☀️';
+  const d = (desc||'').toLowerCase();
+  if (/thunder|storm/.test(d))        return '⛈';
+  if (/rain|drizzle|shower/.test(d))  return '🌧';
+  if (/snow|sleet/.test(d))           return '❄️';
+  if (/fog|mist|haze/.test(d))        return '🌫';
+  if (/overcast|broken/.test(d))      return '☁️';
+  if (/scattered|few|partly/.test(d)) return '⛅';
+  if (/clear|sunny/.test(d))          return '☀️';
   return '🌤';
 };
 
-const ALERT_THRESHOLDS = { wind_speed: 25, pop: 70, temp_high: 100, temp_low: 20 };
+// NWS alert URLs per station region
+const NWS_URLS = {
+  'Lakewood':     'https://alerts.weather.gov/search?state=WA',
+  'Groveland':    'https://alerts.weather.gov/search?state=CA&county=Tuolumne',
+  'Death Valley': 'https://alerts.weather.gov/search?state=CA&county=Inyo',
+  'Reno':         'https://alerts.weather.gov/search?state=NV&county=Washoe',
+};
 
-function isAlert(loc) {
-  return loc.wind_speed >= ALERT_THRESHOLDS.wind_speed ||
-         loc.pop >= ALERT_THRESHOLDS.pop ||
-         loc.temp_high >= ALERT_THRESHOLDS.temp_high ||
-         loc.temp_low <= ALERT_THRESHOLDS.temp_low;
-}
+// Watch thresholds — named so they're easy to tune
+const WATCH = {
+  wind_speed: 25,   // mph — high wind watch
+  pop:        70,   // % — heavy rain watch
+  temp_high:  100,  // °F — excessive heat watch
+  temp_low:   25,   // °F — freeze watch
+};
 
-function alertReason(loc) {
+function watchReasons(loc) {
   const r = [];
-  if (loc.pop >= 70)          r.push(`Heavy Rain ${loc.pop}%`);
-  if (loc.wind_speed >= 25)   r.push(`High Winds ${loc.wind_speed} mph`);
-  if (loc.temp_high >= 100)   r.push(`Extreme Heat ${loc.temp_high}°`);
-  if (loc.temp_low <= 20)     r.push(`Freeze Warning ${loc.temp_low}°`);
-  return r.join(' · ');
+  if (loc.pop        >= WATCH.pop)        r.push(`Heavy Rain ${loc.pop}%`);
+  if (loc.wind_speed >= WATCH.wind_speed) r.push(`High Winds ${loc.wind_speed} mph`);
+  if (loc.temp_high  >= WATCH.temp_high)  r.push(`Excessive Heat ${loc.temp_high}°F`);
+  if (loc.temp_low   <= WATCH.temp_low)   r.push(`Freeze Watch — Low ${loc.temp_low}°F`);
+  return r;
 }
+
+function isWatch(loc) { return watchReasons(loc).length > 0; }
 
 function stationLabel(name, temp) {
-  const labels = {
-    'Lakewood': 'HOME BASE',
+  const map = {
+    'Lakewood':  'HOME BASE',
     'Groveland': 'SIERRA FOOTHILLS',
     'Death Valley': temp >= 110 ? 'EXTREME HEAT WARNING' :
                     temp >= 95  ? 'DANGEROUS HEAT' :
                     temp >= 80  ? 'HOT & DRY' : 'EXTREME CONDITIONS',
     'Reno': 'BIGGEST LITTLE CITY',
   };
-  return labels[name] || name.toUpperCase();
+  return map[name] || name.toUpperCase();
 }
 
-function fmtTime(t) { return t ? t.replace(/^0/, '') : '—'; }
+function fmtTime(t) { return (t || '—').replace(/^0/, ''); }
 
 function buildForecastHTML(days) {
   if (!days || days.length === 0) return '';
@@ -434,27 +277,31 @@ function buildForecastHTML(days) {
       <div class="forecast-days">
         ${days.slice(0,7).map(d => `
           <div class="forecast-day">
-            <div class="f-day">${d.day || ''}</div>
-            <div class="f-icon">${FORECAST_ICONS(d.description || '')}</div>
-            <div class="f-hi" style="color:${TEMP_COLORS(d.temp_high || 0)}">${d.temp_high ?? '—'}°</div>
-            <div class="f-lo">${d.temp_low ?? '—'}°</div>
-            ${d.pop >= 20 ? `<div class="f-pop">☔ ${d.pop}%</div>` : ''}
+            <div class="f-day">${d.day||''}</div>
+            <div class="f-icon">${FORECAST_ICONS(d.description||'')}</div>
+            <div class="f-hi" style="color:${TEMP_COLORS(d.temp_high||0)}">${d.temp_high??'—'}°</div>
+            <div class="f-lo">${d.temp_low??'—'}°</div>
+            ${(d.pop||0) >= 20 ? `<div class="f-pop">☔ ${d.pop}%</div>` : '<div class="f-pop">&nbsp;</div>'}
           </div>`).join('')}
       </div>
     </div>`;
 }
 
 function buildCard(loc, forecast) {
-  const tc       = TEMP_COLORS(loc.temp);
-  const hitc     = TEMP_COLORS(loc.temp_high);
-  const lotc     = TEMP_COLORS(loc.temp_low);
+  const tc           = TEMP_COLORS(loc.temp);
   const [uvc, uvlbl] = UV_INFO(loc.uv_index);
-  const alert    = isAlert(loc);
-  const label    = stationLabel(loc.name, loc.temp);
+  const watch        = isWatch(loc);
+  const reasons      = watchReasons(loc);
+  const label        = stationLabel(loc.name, loc.temp);
+  const nwsUrl       = NWS_URLS[loc.name] || 'https://alerts.weather.gov';
 
   return `
-    <div class="station-card ${alert ? 'alert' : ''}">
-      <div class="alert-banner">⚠ FIRST ALERT &nbsp;·&nbsp; ${alertReason(loc)}</div>
+    <div class="station-card ${watch ? 'watch' : ''}">
+      ${watch ? `
+      <div class="watch-banner">
+        ⚠ Weather Watch &nbsp;·&nbsp; ${reasons.join('  ·  ')}
+        <a href="${nwsUrl}" target="_blank" rel="noopener">NWS Alerts ↗</a>
+      </div>` : ''}
       <div class="card-header">
         <div class="card-label">${label}</div>
         <div class="card-title">${loc.name}, ${loc.state}</div>
@@ -466,8 +313,8 @@ function buildCard(loc, forecast) {
             <div class="condition">${loc.description}</div>
             <div class="feels-like">Feels like ${loc.feels_like}°F</div>
             <div class="hi-lo">
-              <span class="hi" style="color:${hitc}">H ${loc.temp_high}°</span>
-              <span class="lo" style="color:${lotc}">L ${loc.temp_low}°</span>
+              <span class="hi" style="color:${TEMP_COLORS(loc.temp_high)}">H ${loc.temp_high}°</span>
+              <span class="lo" style="color:${TEMP_COLORS(loc.temp_low)}">L ${loc.temp_low}°</span>
             </div>
           </div>
         </div>
@@ -533,7 +380,6 @@ function buildExtremesBar(stations) {
   const windiest = stations.reduce((a,b) => b.wind_speed > a.wind_speed ? b : a);
   const wettest  = stations.reduce((a,b) => b.pop > a.pop ? b : a);
   const spread   = hottest.temp - coldest.temp;
-
   return `
     <div class="extreme-item">🌡 <span class="extreme-label">Hottest</span>
       <span class="extreme-value" style="color:${TEMP_COLORS(hottest.temp)}">${hottest.name} ${hottest.temp}°F</span></div>
@@ -550,22 +396,18 @@ function buildExtremesBar(stations) {
 async function loadWeather() {
   try {
     const r = await fetch(`weather_data.json?t=${Date.now()}`);
-    if (!r.ok) throw new Error('No data yet');
+    if (!r.ok) throw new Error('no data');
     const data = await r.json();
 
-    // Update header
     document.getElementById('last-update').textContent = data.timestamp || '—';
     const period = data.report_period || 'morning';
     document.getElementById('report-period-label').textContent =
-      (period === 'morning' ? '🌅 Morning Report' : '🌆 Evening Report') +
-      '  ·  ' + (data.timestamp || '');
+      (period === 'morning' ? '🌅 Morning Report' : '🌆 Evening Report') + '  ·  ' + (data.timestamp || '');
 
-    // Extremes bar
     const eb = document.getElementById('extremes-bar');
     eb.innerHTML = buildExtremesBar(data.stations);
     eb.style.display = 'flex';
 
-    // Station cards
     const container = document.getElementById('stations-container');
     container.innerHTML = `<div class="stations">
       ${data.stations.map(loc => {
