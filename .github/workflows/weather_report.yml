@@ -35,12 +35,36 @@ jobs:
           print(f'Period: {period} | {ts}')
           "
 
-      - name: Generate chart
+      - name: Generate broadcast cards (original 3-panel)
         env:
           OPENWEATHER_API_KEY: ${{ secrets.OPENWEATHER_API_KEY }}
           REPORT_PERIOD: ${{ steps.report_time.outputs.REPORT_PERIOD }}
           TIMESTAMP: ${{ steps.report_time.outputs.TIMESTAMP }}
         run: pixi run chart
+
+      - name: Generate K5-style cards
+        env:
+          OPENWEATHER_API_KEY: ${{ secrets.OPENWEATHER_API_KEY }}
+          REPORT_PERIOD: ${{ steps.report_time.outputs.REPORT_PERIOD }}
+          TIMESTAMP: ${{ steps.report_time.outputs.TIMESTAMP }}
+        run: |
+          pixi run python -c "
+          import sys, os
+          sys.path.insert(0, 'src')
+          from weather import get_weather_data
+          from chart_k5 import create_k5_charts
+          key = os.environ['OPENWEATHER_API_KEY']
+          data = get_weather_data(key)
+          create_k5_charts(data, report_period=os.environ.get('REPORT_PERIOD','morning'), timestamp=os.environ.get('TIMESTAMP',''))
+          "
+
+      - name: Export weather data to JSON for dashboard
+        env:
+          OPENWEATHER_API_KEY: ${{ secrets.OPENWEATHER_API_KEY }}
+          REPORT_PERIOD: ${{ steps.report_time.outputs.REPORT_PERIOD }}
+          TIMESTAMP: ${{ steps.report_time.outputs.TIMESTAMP }}
+        run: |
+          pixi run python src/export_json.py
 
       - name: Post to Twitter
         env:
@@ -62,12 +86,14 @@ jobs:
           TIMESTAMP: ${{ steps.report_time.outputs.TIMESTAMP }}
         run: pixi run bluesky
 
-      - name: Commit updated PNGs to repo
+      - name: Commit all outputs to repo
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add weather_report.png weather_lakewood.png weather_groveland.png weather_death_valley.png weather_reno.png
-          git diff --staged --quiet || git commit -m "bot: update weather cards [skip ci]"
+          git add weather_report_k5.png weather_lakewood_k5.png weather_groveland_k5.png weather_death_valley_k5.png weather_reno_k5.png || true
+          git add weather_data.json || true
+          git diff --staged --quiet || git commit -m "bot: update weather cards + dashboard data [skip ci]"
           git push
 
       - name: Upload chart artifacts
@@ -80,4 +106,10 @@ jobs:
             weather_groveland.png
             weather_death_valley.png
             weather_reno.png
+            weather_report_k5.png
+            weather_lakewood_k5.png
+            weather_groveland_k5.png
+            weather_death_valley_k5.png
+            weather_reno_k5.png
+            weather_data.json
           retention-days: 7

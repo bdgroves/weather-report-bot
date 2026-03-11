@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Weather Intelligence — bdgroves</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;900&family=Barlow:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:      #050D1A;
+    --panel:   #0A1828;
+    --border:  #0F2540;
+    --acc:     #38BDF8;
+    --acc2:    #0EA5E9;
+    --gold:    #FFD60A;
+    --orange:  #F97316;
+    --muted:   #4A6480;
+    --text:    #C8DCF0;
+    --white:   #EDF3FA;
+    --alert:   #CC2200;
+
+    --t-hot:   #FF3333;
+    --t-warm:  #FF6B35;
+    --t-mild:  #E3B341;
+    --t-cool:  #3CB86B;
+    --t-cold:  #58A6FF;
+    --t-freeze:#79C0FF;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Barlow', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Background grid texture */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(56,189,248,.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(56,189,248,.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .wrap { position: relative; z-index: 1; max-width: 1400px; margin: 0 auto; padding: 0 20px; }
+
+  /* ── HEADER ── */
+  header {
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(180deg, #060E1E 0%, transparent 100%);
+    position: sticky; top: 0; z-index: 100;
+  }
+  .header-inner {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 24px;
+  }
+  .brand { display: flex; align-items: center; gap: 14px; }
+  .brand-dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: var(--acc);
+    box-shadow: 0 0 12px var(--acc);
+    animation: pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%,100% { opacity:1; transform:scale(1); }
+    50%      { opacity:.5; transform:scale(.85); }
+  }
+  .brand-name {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 1.3rem; font-weight: 700; letter-spacing: .08em;
+    color: var(--white); text-transform: uppercase;
+  }
+  .brand-sub { font-size: .72rem; color: var(--muted); letter-spacing: .12em; }
+
+  .header-right { display: flex; align-items: center; gap: 20px; }
+  .last-update { font-size: .75rem; color: var(--muted); }
+  .last-update span { color: var(--acc); font-weight: 500; }
+
+  /* ── HERO STRIP ── */
+  .hero {
+    padding: 28px 24px 0;
+    display: flex; align-items: flex-end; justify-content: space-between;
+    gap: 16px;
+  }
+  .hero-title {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 2.8rem; font-weight: 900; letter-spacing: .04em;
+    color: var(--white); text-transform: uppercase; line-height: 1;
+  }
+  .hero-title span { color: var(--acc); }
+  .hero-meta { font-size: .8rem; color: var(--muted); padding-bottom: 4px; }
+
+  /* ── STATION GRID ── */
+  .stations {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 16px;
+    padding: 20px 24px;
+  }
+
+  .station-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    transition: border-color .2s, transform .2s;
+    animation: fadeUp .5s ease both;
+  }
+  .station-card:hover {
+    border-color: var(--acc2);
+    transform: translateY(-2px);
+  }
+  @keyframes fadeUp {
+    from { opacity:0; transform:translateY(16px); }
+    to   { opacity:1; transform:translateY(0); }
+  }
+  .station-card:nth-child(1) { animation-delay: .05s; }
+  .station-card:nth-child(2) { animation-delay: .10s; }
+  .station-card:nth-child(3) { animation-delay: .15s; }
+  .station-card:nth-child(4) { animation-delay: .20s; }
+
+  .station-card.alert { border-color: var(--alert); }
+  .station-card.alert .card-header { background: linear-gradient(135deg, #1A0505 0%, var(--panel) 100%); }
+
+  .card-header {
+    padding: 14px 16px 10px;
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(135deg, #0A1828 0%, #060E18 100%);
+  }
+  .card-label {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: .7rem; font-weight: 700; letter-spacing: .15em;
+    color: var(--acc); text-transform: uppercase;
+  }
+  .card-title {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 1.5rem; font-weight: 700;
+    color: var(--white); line-height: 1.1;
+  }
+  .alert-banner {
+    display: none; align-items: center; gap: 6px;
+    background: var(--alert); padding: 4px 10px;
+    font-size: .7rem; font-weight: 700; letter-spacing: .1em;
+    color: white; text-transform: uppercase;
+  }
+  .station-card.alert .alert-banner { display: flex; }
+
+  /* Main reading area */
+  .card-body { padding: 16px; }
+
+  .temp-row {
+    display: flex; align-items: flex-end; gap: 16px;
+    margin-bottom: 12px;
+  }
+  .temp-big {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 5rem; font-weight: 900; line-height: 1;
+  }
+  .temp-detail { padding-bottom: 8px; }
+  .condition {
+    font-size: .85rem; font-weight: 500; color: var(--white);
+    margin-bottom: 4px;
+  }
+  .feels-like { font-size: .75rem; color: var(--muted); }
+  .hi-lo {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 1rem; font-weight: 600;
+  }
+  .hi-lo .hi { margin-right: 10px; }
+
+  /* KPI grid */
+  .kpi-grid {
+    display: grid; grid-template-columns: repeat(3,1fr);
+    gap: 8px; margin-bottom: 12px;
+  }
+  .kpi {
+    background: rgba(255,255,255,.03);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 6px;
+    text-align: center;
+  }
+  .kpi-label {
+    font-size: .6rem; color: var(--muted);
+    letter-spacing: .1em; text-transform: uppercase;
+    margin-bottom: 3px;
+  }
+  .kpi-value {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 1.1rem; font-weight: 700; color: var(--white);
+  }
+
+  /* Sun row */
+  .sun-row {
+    display: flex; gap: 8px; margin-bottom: 12px;
+  }
+  .sun-item {
+    flex: 1; background: rgba(255,255,255,.03);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 7px 10px; display: flex; align-items: center; gap: 8px;
+  }
+  .sun-icon { font-size: 1rem; }
+  .sun-label { font-size: .6rem; color: var(--muted); letter-spacing: .08em; }
+  .sun-time  { font-family: 'Barlow Condensed', sans-serif; font-size: 1rem; font-weight: 600; }
+
+  /* Precip + cloud bars */
+  .bar-row { margin-bottom: 8px; }
+  .bar-label-row {
+    display: flex; justify-content: space-between;
+    font-size: .65rem; color: var(--muted); margin-bottom: 4px;
+    text-transform: uppercase; letter-spacing: .08em;
+  }
+  .bar-label-row span:last-child { color: var(--white); font-weight: 600; }
+  .bar-track {
+    height: 6px; background: var(--border); border-radius: 3px; overflow: hidden;
+  }
+  .bar-fill {
+    height: 100%; border-radius: 3px;
+    transition: width .8s ease;
+  }
+  .bar-fill.precip { background: linear-gradient(90deg, var(--acc2), #60A5FA); }
+  .bar-fill.clouds { background: linear-gradient(90deg, #4A6480, #7090A8); }
+
+  /* ── 7-DAY FORECAST ── */
+  .forecast-strip {
+    border-top: 1px solid var(--border);
+    padding: 10px 14px 12px;
+    background: rgba(0,0,0,.2);
+  }
+  .forecast-label {
+    font-size: .65rem; color: var(--muted); letter-spacing: .12em;
+    text-transform: uppercase; margin-bottom: 8px;
+  }
+  .forecast-days {
+    display: flex; gap: 4px;
+  }
+  .forecast-day {
+    flex: 1; text-align: center;
+    padding: 6px 2px;
+    border-radius: 6px;
+    background: rgba(255,255,255,.02);
+    border: 1px solid transparent;
+    transition: border-color .2s;
+  }
+  .forecast-day:hover { border-color: var(--border); }
+  .forecast-day .f-day {
+    font-size: .6rem; color: var(--muted);
+    letter-spacing: .08em; text-transform: uppercase; margin-bottom: 4px;
+  }
+  .forecast-day .f-icon { font-size: 1.1rem; margin-bottom: 4px; }
+  .forecast-day .f-hi {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: .95rem; font-weight: 700;
+  }
+  .forecast-day .f-lo {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: .8rem; color: var(--muted);
+  }
+  .forecast-day .f-pop {
+    font-size: .6rem; color: #60A5FA; margin-top: 2px;
+  }
+
+  /* ── EXTREMES BAR ── */
+  .extremes-bar {
+    display: flex; gap: 12px; flex-wrap: wrap;
+    padding: 12px 24px; border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    background: rgba(0,0,0,.2);
+    font-size: .78rem;
+  }
+  .extreme-item { display: flex; gap: 6px; align-items: center; }
+  .extreme-label { color: var(--muted); }
+  .extreme-value { color: var(--white); font-weight: 600; }
+
+  /* ── COMBINED IMAGE ── */
+  .combined-section { padding: 0 24px 24px; }
+  .combined-section h2 {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 1rem; font-weight: 700; letter-spacing: .12em;
+    color: var(--muted); text-transform: uppercase;
+    margin-bottom: 12px; padding-top: 16px;
+  }
+  .combined-img {
+    width: 100%; border-radius: 10px;
+    border: 1px solid var(--border);
+  }
+
+  /* ── FOOTER ── */
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 16px 24px;
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: .72rem; color: var(--muted);
+  }
+  footer a { color: var(--acc); text-decoration: none; }
+
+  /* ── LOADING / ERROR ── */
+  .loading {
+    display: flex; align-items: center; justify-content: center;
+    min-height: 60vh; font-size: 1rem; color: var(--muted);
+    gap: 12px;
+  }
+  .spinner {
+    width: 20px; height: 20px; border: 2px solid var(--border);
+    border-top-color: var(--acc); border-radius: 50%;
+    animation: spin .8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .no-data { text-align: center; padding: 40px; color: var(--muted); }
+
+  /* Responsive */
+  @media (max-width: 600px) {
+    .hero-title { font-size: 1.8rem; }
+    .stations { grid-template-columns: 1fr; padding: 12px; }
+    .hero { flex-direction: column; align-items: flex-start; }
+    .kpi-grid { grid-template-columns: repeat(2,1fr); }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <div class="brand">
+      <div class="brand-dot"></div>
+      <div>
+        <div class="brand-name">Weather Intelligence</div>
+        <div class="brand-sub">@bdgroves · West Coast Stations</div>
+      </div>
+    </div>
+    <div class="header-right">
+      <div class="last-update">Updated <span id="last-update">—</span></div>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="hero">
+    <div>
+      <div class="hero-title">West Coast <span>Weather</span></div>
+      <div class="hero-title">Intelligence</div>
+    </div>
+    <div class="hero-meta" id="report-period-label"></div>
+  </div>
+
+  <div class="extremes-bar" id="extremes-bar" style="display:none"></div>
+
+  <div id="stations-container">
+    <div class="loading"><div class="spinner"></div> Loading weather data…</div>
+  </div>
+
+  <div class="combined-section">
+    <h2>Combined Station Report</h2>
+    <img class="combined-img" src="weather_report_k5.png" alt="Combined weather report"
+         onerror="this.src='weather_report.png'">
+  </div>
+</div>
+
+<footer>
+  <span>Data: <a href="https://openweathermap.org">OpenWeatherMap</a> · Automation: GitHub Actions</span>
+  <span><a href="https://twitter.com/bdgroves">@bdgroves</a> · <a href="https://bsky.app/profile/bdgroves.bsky.social">BlueSky</a> · <a href="https://github.com/bdgroves/weather-report-bot">GitHub</a></span>
+</footer>
+
+<script>
+const TEMP_COLORS = t =>
+  t >= 100 ? '#FF3333' : t >= 90 ? '#FF6B35' : t >= 80 ? '#F78166' :
+  t >= 70  ? '#E3B341' : t >= 60 ? '#3CB86B' : t >= 50 ? '#58A6FF' :
+  t >= 32  ? '#79C0FF' : '#B0D8FF';
+
+const UV_INFO = u =>
+  u >= 11 ? ['#A855F7','EXTREME'] : u >= 8 ? ['#EF4444','VERY HIGH'] :
+  u >= 6  ? ['#F97316','HIGH']    : u >= 3 ? ['#EAB308','MODERATE'] :
+  ['#22C55E','LOW'];
+
+const FORECAST_ICONS = desc => {
+  const d = desc.toLowerCase();
+  if (/thunder|storm/.test(d))          return '⛈';
+  if (/rain|drizzle|shower/.test(d))    return '🌧';
+  if (/snow|sleet/.test(d))             return '❄️';
+  if (/fog|mist|haze/.test(d))          return '🌫';
+  if (/overcast|broken/.test(d))        return '☁️';
+  if (/scattered|few|partly/.test(d))   return '⛅';
+  if (/clear|sunny/.test(d))            return '☀️';
+  return '🌤';
+};
+
+const ALERT_THRESHOLDS = { wind_speed: 25, pop: 70, temp_high: 100, temp_low: 20 };
+
+function isAlert(loc) {
+  return loc.wind_speed >= ALERT_THRESHOLDS.wind_speed ||
+         loc.pop >= ALERT_THRESHOLDS.pop ||
+         loc.temp_high >= ALERT_THRESHOLDS.temp_high ||
+         loc.temp_low <= ALERT_THRESHOLDS.temp_low;
+}
+
+function alertReason(loc) {
+  const r = [];
+  if (loc.pop >= 70)          r.push(`Heavy Rain ${loc.pop}%`);
+  if (loc.wind_speed >= 25)   r.push(`High Winds ${loc.wind_speed} mph`);
+  if (loc.temp_high >= 100)   r.push(`Extreme Heat ${loc.temp_high}°`);
+  if (loc.temp_low <= 20)     r.push(`Freeze Warning ${loc.temp_low}°`);
+  return r.join(' · ');
+}
+
+function stationLabel(name, temp) {
+  const labels = {
+    'Lakewood': 'HOME BASE',
+    'Groveland': 'SIERRA FOOTHILLS',
+    'Death Valley': temp >= 110 ? 'EXTREME HEAT WARNING' :
+                    temp >= 95  ? 'DANGEROUS HEAT' :
+                    temp >= 80  ? 'HOT & DRY' : 'EXTREME CONDITIONS',
+    'Reno': 'BIGGEST LITTLE CITY',
+  };
+  return labels[name] || name.toUpperCase();
+}
+
+function fmtTime(t) { return t ? t.replace(/^0/, '') : '—'; }
+
+function buildForecastHTML(days) {
+  if (!days || days.length === 0) return '';
+  return `
+    <div class="forecast-strip">
+      <div class="forecast-label">7-Day Forecast</div>
+      <div class="forecast-days">
+        ${days.slice(0,7).map(d => `
+          <div class="forecast-day">
+            <div class="f-day">${d.day || ''}</div>
+            <div class="f-icon">${FORECAST_ICONS(d.description || '')}</div>
+            <div class="f-hi" style="color:${TEMP_COLORS(d.temp_high || 0)}">${d.temp_high ?? '—'}°</div>
+            <div class="f-lo">${d.temp_low ?? '—'}°</div>
+            ${d.pop >= 20 ? `<div class="f-pop">☔ ${d.pop}%</div>` : ''}
+          </div>`).join('')}
+      </div>
+    </div>`;
+}
+
+function buildCard(loc, forecast) {
+  const tc       = TEMP_COLORS(loc.temp);
+  const hitc     = TEMP_COLORS(loc.temp_high);
+  const lotc     = TEMP_COLORS(loc.temp_low);
+  const [uvc, uvlbl] = UV_INFO(loc.uv_index);
+  const alert    = isAlert(loc);
+  const label    = stationLabel(loc.name, loc.temp);
+
+  return `
+    <div class="station-card ${alert ? 'alert' : ''}">
+      <div class="alert-banner">⚠ FIRST ALERT &nbsp;·&nbsp; ${alertReason(loc)}</div>
+      <div class="card-header">
+        <div class="card-label">${label}</div>
+        <div class="card-title">${loc.name}, ${loc.state}</div>
+      </div>
+      <div class="card-body">
+        <div class="temp-row">
+          <div class="temp-big" style="color:${tc}">${loc.temp}°</div>
+          <div class="temp-detail">
+            <div class="condition">${loc.description}</div>
+            <div class="feels-like">Feels like ${loc.feels_like}°F</div>
+            <div class="hi-lo">
+              <span class="hi" style="color:${hitc}">H ${loc.temp_high}°</span>
+              <span class="lo" style="color:${lotc}">L ${loc.temp_low}°</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="kpi-grid">
+          <div class="kpi">
+            <div class="kpi-label">Humidity</div>
+            <div class="kpi-value" style="color:#38BDF8">${loc.humidity}%</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-label">Wind</div>
+            <div class="kpi-value">${loc.wind_speed} <small style="font-size:.7rem;color:#4A6480">mph ${loc.wind_dir}</small></div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-label">UV Index</div>
+            <div class="kpi-value" style="color:${uvc}">${loc.uv_index} <small style="font-size:.65rem">${uvlbl}</small></div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-label">Precip</div>
+            <div class="kpi-value" style="color:#60A5FA">${loc.pop}%</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-label">Dew Point</div>
+            <div class="kpi-value">${loc.dew_point}°F</div>
+          </div>
+          <div class="kpi">
+            <div class="kpi-label">Pressure</div>
+            <div class="kpi-value" style="font-size:.9rem">${loc.pressure}<small style="font-size:.6rem;color:#4A6480"> hPa</small></div>
+          </div>
+        </div>
+
+        <div class="sun-row">
+          <div class="sun-item">
+            <div class="sun-icon">🌅</div>
+            <div><div class="sun-label">Sunrise</div><div class="sun-time" style="color:#FFD60A">${fmtTime(loc.sunrise)}</div></div>
+          </div>
+          <div class="sun-item">
+            <div class="sun-icon">🌇</div>
+            <div><div class="sun-label">Sunset</div><div class="sun-time" style="color:#F97316">${fmtTime(loc.sunset)}</div></div>
+          </div>
+          <div class="sun-item">
+            <div class="sun-icon">👁</div>
+            <div><div class="sun-label">Visibility</div><div class="sun-time">${loc.visibility} mi</div></div>
+          </div>
+        </div>
+
+        <div class="bar-row">
+          <div class="bar-label-row"><span>Precip Chance</span><span>${loc.pop}%</span></div>
+          <div class="bar-track"><div class="bar-fill precip" style="width:${loc.pop}%"></div></div>
+        </div>
+        <div class="bar-row">
+          <div class="bar-label-row"><span>Cloud Cover</span><span>${loc.cloud_cover}%</span></div>
+          <div class="bar-track"><div class="bar-fill clouds" style="width:${loc.cloud_cover}%"></div></div>
+        </div>
+      </div>
+      ${buildForecastHTML(forecast)}
+    </div>`;
+}
+
+function buildExtremesBar(stations) {
+  const hottest  = stations.reduce((a,b) => b.temp > a.temp ? b : a);
+  const coldest  = stations.reduce((a,b) => b.temp < a.temp ? b : a);
+  const windiest = stations.reduce((a,b) => b.wind_speed > a.wind_speed ? b : a);
+  const wettest  = stations.reduce((a,b) => b.pop > a.pop ? b : a);
+  const spread   = hottest.temp - coldest.temp;
+
+  return `
+    <div class="extreme-item">🌡 <span class="extreme-label">Hottest</span>
+      <span class="extreme-value" style="color:${TEMP_COLORS(hottest.temp)}">${hottest.name} ${hottest.temp}°F</span></div>
+    <div class="extreme-item">🧊 <span class="extreme-label">Coolest</span>
+      <span class="extreme-value" style="color:${TEMP_COLORS(coldest.temp)}">${coldest.name} ${coldest.temp}°F</span></div>
+    <div class="extreme-item">💨 <span class="extreme-label">Windiest</span>
+      <span class="extreme-value">${windiest.name} ${windiest.wind_speed} mph</span></div>
+    <div class="extreme-item">☔ <span class="extreme-label">Wettest</span>
+      <span class="extreme-value">${wettest.name} ${wettest.pop}%</span></div>
+    <div class="extreme-item">📊 <span class="extreme-label">Temp Spread</span>
+      <span class="extreme-value">${spread}°F across 4 stations</span></div>`;
+}
+
+async function loadWeather() {
+  try {
+    const r = await fetch(`weather_data.json?t=${Date.now()}`);
+    if (!r.ok) throw new Error('No data yet');
+    const data = await r.json();
+
+    // Update header
+    document.getElementById('last-update').textContent = data.timestamp || '—';
+    const period = data.report_period || 'morning';
+    document.getElementById('report-period-label').textContent =
+      (period === 'morning' ? '🌅 Morning Report' : '🌆 Evening Report') +
+      '  ·  ' + (data.timestamp || '');
+
+    // Extremes bar
+    const eb = document.getElementById('extremes-bar');
+    eb.innerHTML = buildExtremesBar(data.stations);
+    eb.style.display = 'flex';
+
+    // Station cards
+    const container = document.getElementById('stations-container');
+    container.innerHTML = `<div class="stations">
+      ${data.stations.map(loc => {
+        const forecast = (data.forecast || {})[loc.name] || [];
+        return buildCard(loc, forecast);
+      }).join('')}
+    </div>`;
+
+  } catch(e) {
+    document.getElementById('stations-container').innerHTML = `
+      <div class="no-data">
+        <p style="font-size:2rem;margin-bottom:12px">🌤</p>
+        <p>Weather data loads after the first Actions run.</p>
+        <p style="font-size:.8rem;color:#2A3F55;margin-top:8px">Trigger a manual run from GitHub Actions to populate data.</p>
+      </div>`;
+  }
+}
+
+loadWeather();
+</script>
+</body>
+</html>
