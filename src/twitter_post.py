@@ -19,12 +19,12 @@ LEAD_HASHTAGS = (
 STATION_ORDER = ["Lakewood", "Groveland", "Death Valley", "Reno"]
 
 
-def _build_station_caption(loc, period_text, timestamp):
+def _build_station_caption(loc, timestamp):
     """Per-station tweet — condensed format fits within 270 chars with full hashtags."""
     name  = loc["name"]
     htags = STATION_HASHTAGS.get(name, "")
     lines = [
-        f"{name}, {loc['state']}  |  {period_text} Report",
+        f"{name}, {loc['state']}  |  {timestamp}",
         f"Temp: {loc['temp']}F  Feels {loc['feels_like']}F  H {loc['temp_high']}  L {loc['temp_low']}",
         f"Humidity: {loc['humidity']}%  Precip: {loc['pop']}%  Wind: {loc['wind_speed']} mph {loc.get('wind_dir','')}",
         f"UV: {loc['uv_index']}  Clouds: {loc['cloud_cover']}%  Vis: {loc['visibility']} mi",
@@ -42,7 +42,6 @@ def post_to_twitter():
     access_secret = os.environ["TWITTER_ACCESS_SECRET"]
     report_period = os.environ.get("REPORT_PERIOD", "morning")
     timestamp     = os.environ.get("TIMESTAMP", "")
-    period_text   = "Morning" if report_period == "morning" else "Evening"
 
     # v1 for media upload, v2 client for tweets
     auth = tweepy.OAuthHandler(api_key, api_secret)
@@ -67,7 +66,7 @@ def post_to_twitter():
 
     # Lead tweet — combined 2x2 card
     lead_text = (
-        f"{period_text} Weather Report\n"
+        f"West Coast Weather Report\n"
         f"Lakewood WA · Groveland CA · Death Valley CA · Reno NV\n"
         f"{timestamp}\n\n"
         f"Tap for full conditions at each station 👇\n\n"
@@ -96,7 +95,7 @@ def post_to_twitter():
         if not os.path.exists(card_path):
             card_path = combined_img
 
-        caption = _build_station_caption(loc, period_text, timestamp)
+        caption = _build_station_caption(loc, timestamp)
 
         print(f"  Waiting 90s before {name}...")
         time.sleep(90)

@@ -22,12 +22,12 @@ LEAD_HASHTAGS = (
 STATION_ORDER = ["Lakewood", "Groveland", "Death Valley", "Reno"]
 
 
-def _build_station_caption(loc, period_text, timestamp):
+def _build_station_caption(loc, timestamp):
     """Per-station post — condensed format fits within 300 chars with full hashtags."""
     name  = loc["name"]
     htags = STATION_HASHTAGS.get(name, "")
     lines = [
-        f"{name}, {loc['state']}  |  {period_text} Report",
+        f"{name}, {loc['state']}  |  {timestamp}",
         f"Temp: {loc['temp']}F  Feels {loc['feels_like']}F  H {loc['temp_high']}  L {loc['temp_low']}",
         f"Humidity: {loc['humidity']}%  Precip: {loc['pop']}%  Wind: {loc['wind_speed']} mph {loc.get('wind_dir','')}",
         f"UV: {loc['uv_index']}  Clouds: {loc['cloud_cover']}%  Vis: {loc['visibility']} mi",
@@ -102,9 +102,7 @@ def _post_record(session, text, blob, alt_text, reply_ref=None):
 def post_to_bluesky():
     handle        = os.environ["BLUESKY_HANDLE"]
     password      = os.environ["BLUESKY_APP_PASSWORD"]
-    report_period = os.environ.get("REPORT_PERIOD", "morning")
     timestamp     = os.environ.get("TIMESTAMP", "")
-    period_text   = "Morning" if report_period == "morning" else "Evening"
 
     owm_key = os.environ.get("OPENWEATHER_API_KEY")
     if not owm_key:
@@ -119,7 +117,7 @@ def post_to_bluesky():
 
     # ── Lead post: combined 2×2 K5 card ──────────────────────────────────────
     lead_text = (
-        f"{period_text} Weather Report\n"
+        f"West Coast Weather Report\n"
         f"Lakewood WA · Groveland CA · Death Valley CA · Reno NV\n"
         f"{timestamp}\n\n"
         f"Full conditions at each station below 👇\n\n"
@@ -131,7 +129,7 @@ def post_to_bluesky():
     blob = _upload_image(session, combined_img)
     print("Posting lead...")
     lead = _post_record(session, lead_text, blob,
-                        alt_text=f"{period_text} West Coast weather — 4 stations")
+                        alt_text="West Coast weather — 4 stations")
     print(f"  Lead posted — URI: {lead['uri']}")
 
     root_ref   = {"uri": lead["uri"], "cid": lead["cid"]}
@@ -148,7 +146,7 @@ def post_to_bluesky():
         if not os.path.exists(card_path):
             print(f"  K5 card not found for {name}, using combined"); card_path = combined_img
 
-        caption  = _build_station_caption(loc, period_text, timestamp)
+        caption  = _build_station_caption(loc, timestamp)
         alt_text = (f"{name}, {loc['state']} — {loc['temp']}°F "
                     f"{loc.get('description','')} H:{loc['temp_high']} L:{loc['temp_low']}")
 
