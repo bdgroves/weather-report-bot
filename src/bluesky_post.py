@@ -1,4 +1,4 @@
-﻿import os
+import os
 import sys
 import time
 import requests
@@ -6,7 +6,6 @@ from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.dirname(__file__))
 from weather import get_weather_data
-from chart import _uv_info
 
 BSKY_API = "https://bsky.social/xrpc"
 
@@ -16,140 +15,157 @@ STATION_HASHTAGS = {
     "Death Valley": "#DeathValley #DeathValleyNP #CAwx #MojaveDesert #wxtwitter",
     "Reno":         "#Reno #RenoNV #NVwx #GreatBasin #HighDesert #wxtwitter",
 }
+LEAD_HASHTAGS = "#Weather #WestCoast #wxtwitter #DailyWeather #WeatherReport"
+STATION_ORDER = ["Lakewood", "Groveland", "Death Valley", "Reno"]
 
-STATION_LABELS = {
-    "Lakewood":     "HOME BASE",
-    "Groveland":    "SIERRA FOOTHILLS",
-    "Death Valley": "EXTREME CONDITIONS",
-    "Reno":         "BIGGEST LITTLE CITY",
-}
 
-def _icon(desc):
-    d = desc.lower()
-    if any(w in d for w in ("thunder", "storm")):           return "⛈"
-    if any(w in d for w in ("rain", "drizzle", "shower")):  return "🌧"
-    if any(w in d for w in ("snow", "sleet")):              return "❄️"
-    if any(w in d for w in ("fog", "mist", "haze")):        return "🌫"
-    if any(w in d for w in ("overcast", "broken")):         return "☁️"
-    if any(w in d for w in ("scattered", "few", "partly")): return "⛅"
-    if any(w in d for w in ("clear", "sunny")):             return "☀️"
-    return "🌤"
-
-def build_station_text(loc, period, timestamp):
-    _, uvlbl = _uv_info(loc["uv_index"])
-    label    = STATION_LABELS.get(loc["name"], loc["name"].upper())
-    ic       = _icon(loc["description"])
-    tags     = STATION_HASHTAGS.get(loc["name"], "")
+def _build_station_caption(loc, period_text, timestamp):
+    """Per-station post — stays under 300 chars (BlueSky limit)."""
+    htags = STATION_HASHTAGS.get(loc["name"], "")
     lines = [
-        f"{ic} {loc['name']}, {loc['state']} — {label}",
-        f"{period} Report | {timestamp}",
-        f"🌡 {loc['temp']}°F (Feels {loc['feels_like']}°F)  H {loc['temp_high']}° L {loc['temp_low']}°",
-        f"💧 {loc['humidity']}%  ☔ {loc['pop']}%  💨 {loc['wind_speed']} mph {loc['wind_dir']}",
-        f"🌞 UV {loc['uv_index']} {uvlbl}  ☁️ {loc['cloud_cover']}%  👁 {loc['visibility']} mi",
-        f"🌅 {loc['sunrise']}  🌇 {loc['sunset']}  📊 {loc['pressure']} hPa",
+        f"{loc.get('emoji','')} {loc['name']}, {loc['state']}",
+        f"{period_text} Report | {timestamp}",
+        f"Temp: {loc['temp']}F (Feels {loc['feels_like']}F) H {loc['temp_high']} L {loc['temp_low']}",
+        f"Humidity: {loc['humidity']}% Precip: {loc['pop']}% Wind: {loc['wind_speed']} mph {loc.get('wind_dir','')}",
+        f"UV: {loc['uv_index']} Clouds: {loc['cloud_cover']}% Vis: {loc['visibility']} mi",
+        f"Sunrise: {loc['sunrise'].lstrip('0')} Sunset: {loc['sunset'].lstrip('0')}",
         "",
-        tags,
+        htags,
         "#DailyWeather #WeatherReport",
     ]
     text = "\n".join(lines)
     if len(text) > 300:
-        text = text[:297] + "..."
-    return text
+        lines[-2] = ""
+        text = "\n".join(lines)
+    return text[:300]
 
-def create_session(handle, password):
+
+# ── BlueSky API helpers ───────────────────────────────────────────────────────
+def _create_session(handle, password):
     resp = requests.post(
         f"{BSKY_API}/com.atproto.server.createSession",
         json={"identifier": handle, "password": password},
+        timeout=15,
     )
     resp.raise_for_status()
     return resp.json()
 
-def upload_image(session, image_path):
+
+def _upload_image(session, image_path):
     with open(image_path, "rb") as f:
-        image_data = f.read()
+        data = f.read()
     resp = requests.post(
         f"{BSKY_API}/com.atproto.repo.uploadBlob",
         headers={
             "Authorization": f"Bearer {session['accessJwt']}",
-            "Content-Type": "image/png",
+            "Content-Type":  "image/png",
         },
-        data=image_data,
+        data=data,
+        timeout=30,
     )
     resp.raise_for_status()
     return resp.json()["blob"]
 
-def create_post(session, text, blob, alt_text, reply_ref=None):
+
+def _post_record(session, text, blob, alt_text, reply_ref=None):
     record = {
-        "$type": "app.bsky.feed.post",
-        "text": text,
+        "$type":     "app.bsky.feed.post",
+        "text":      text,
         "createdAt": datetime.now(timezone.utc).isoformat(),
         "embed": {
-            "$type": "app.bsky.embed.images",
+            "$type":  "app.bsky.embed.images",
             "images": [{"image": blob, "alt": alt_text}],
         },
     }
     if reply_ref:
-        record["reply"] = reply_ref
+        record["reply"] = {
+            "root":   reply_ref["root"],
+            "parent": reply_ref["parent"],
+        }
     resp = requests.post(
         f"{BSKY_API}/com.atproto.repo.createRecord",
         headers={
             "Authorization": f"Bearer {session['accessJwt']}",
-            "Content-Type": "application/json",
+            "Content-Type":  "application/json",
         },
-        json={"repo": session["did"], "collection": "app.bsky.feed.post", "record": record},
+        json={
+            "repo":       session["did"],
+            "collection": "app.bsky.feed.post",
+            "record":     record,
+        },
+        timeout=15,
     )
     resp.raise_for_status()
-    return resp.json()
+    data = resp.json()
+    return {"uri": data["uri"], "cid": data["cid"]}
 
+
+# ── Main ──────────────────────────────────────────────────────────────────────
 def post_to_bluesky():
     handle        = os.environ["BLUESKY_HANDLE"]
     password      = os.environ["BLUESKY_APP_PASSWORD"]
     report_period = os.environ.get("REPORT_PERIOD", "morning")
     timestamp     = os.environ.get("TIMESTAMP", "")
-    owm_key       = os.environ.get("OPENWEATHER_API_KEY", "")
-    period        = "Morning" if report_period == "morning" else "Evening"
+    period_text   = "Morning" if report_period == "morning" else "Evening"
 
+    owm_key = os.environ.get("OPENWEATHER_API_KEY")
     if not owm_key:
-        print("ERROR: OPENWEATHER_API_KEY not set")
-        return
+        print("ERROR: OPENWEATHER_API_KEY not set"); sys.exit(1)
 
     print("Fetching weather data...")
     weather_data = get_weather_data(owm_key)
+    loc_by_name  = {loc["name"]: loc for loc in weather_data}
 
     print("Authenticating with BlueSky...")
-    session = create_session(handle, password)
+    session = _create_session(handle, password)
 
-    lead_ref = None
-    if os.path.exists("weather_report.png"):
-        lead_text = (
-            f"{period} Weather Report  |  {timestamp}\n"
-            f"Lakewood WA  ·  Groveland CA  ·  Death Valley CA  ·  Reno NV\n\n"
-            f"#WAwx #CAwx #NVwx #PNWwx #PNW #wxtwitter #DailyWeather #WeatherReport"
-        )
-        print("Posting combined card (lead)...")
-        blob   = upload_image(session, "weather_report.png")
-        result = create_post(session, lead_text, blob, "Daily weather report — all 4 stations")
-        lead_ref = {
-            "root":   {"uri": result["uri"], "cid": result["cid"]},
-            "parent": {"uri": result["uri"], "cid": result["cid"]},
-        }
-        print(f"  Lead post: {result['uri']}")
-        time.sleep(90)
+    # ── Lead post: combined 2×2 K5 card ──────────────────────────────────────
+    lead_text = (
+        f"{period_text} Weather Report\n"
+        f"Lakewood WA · Groveland CA · Death Valley CA · Reno NV\n"
+        f"{timestamp}\n\n"
+        f"Full conditions at each station below 👇\n\n"
+        f"{LEAD_HASHTAGS}"
+    )
+    combined_img = "weather_report_k5.png" if os.path.exists("weather_report_k5.png") else "weather_report.png"
 
-    for loc in weather_data:
-        slug     = loc["name"].lower().replace(" ", "_")
-        img_path = f"weather_{slug}.png"
-        if not os.path.exists(img_path):
-            continue
-        text = build_station_text(loc, period, timestamp)
-        alt  = f"{loc['name']}, {loc['state']} — {loc['temp']}°F {loc['description']}"
-        print(f"Posting {loc['name']}... ({len(text)} chars)")
-        blob   = upload_image(session, img_path)
-        result = create_post(session, text, blob, alt, reply_ref=lead_ref)
-        if lead_ref:
-            lead_ref["parent"] = {"uri": result["uri"], "cid": result["cid"]}
-        print(f"  Posted: {result['uri']}")
-        time.sleep(90)
+    print("Uploading combined card...")
+    blob = _upload_image(session, combined_img)
+    print("Posting lead...")
+    lead = _post_record(session, lead_text, blob,
+                        alt_text=f"{period_text} West Coast weather — 4 stations")
+    print(f"  Lead posted — URI: {lead['uri']}")
+
+    root_ref   = {"uri": lead["uri"], "cid": lead["cid"]}
+    parent_ref = root_ref
+
+    # ── Station thread replies ────────────────────────────────────────────────
+    for name in STATION_ORDER:
+        loc = loc_by_name.get(name)
+        if not loc:
+            print(f"  Skipping {name} — no data"); continue
+
+        slug      = name.lower().replace(" ", "_")
+        card_path = f"weather_{slug}_k5.png"
+        if not os.path.exists(card_path):
+            print(f"  K5 card not found for {name}, using combined"); card_path = combined_img
+
+        caption  = _build_station_caption(loc, period_text, timestamp)
+        alt_text = (f"{name}, {loc['state']} — {loc['temp']}°F "
+                    f"{loc.get('description','')} H:{loc['temp_high']} L:{loc['temp_low']}")
+
+        print(f"  Waiting 10s before {name}...")
+        time.sleep(10)  # BlueSky has no paid-tier delay requirement
+
+        print(f"  Posting {name}...")
+        blob  = _upload_image(session, card_path)
+        reply = _post_record(session, caption, blob, alt_text,
+                             reply_ref={"root": root_ref, "parent": parent_ref})
+        parent_ref = {"uri": reply["uri"], "cid": reply["cid"]}
+        print(f"    {name} posted — URI: {reply['uri']}")
+
+    print("BlueSky thread complete.")
+
 
 if __name__ == "__main__":
     post_to_bluesky()
