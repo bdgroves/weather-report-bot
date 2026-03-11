@@ -228,12 +228,12 @@ const FORECAST_ICONS = desc => {
   return '🌤';
 };
 
-// NWS alert URLs per station region
+// NWS forecast office URLs — direct links, always work
 const NWS_URLS = {
-  'Lakewood':     'https://alerts.weather.gov/search?state=WA',
-  'Groveland':    'https://alerts.weather.gov/search?state=CA&county=Tuolumne',
-  'Death Valley': 'https://alerts.weather.gov/search?state=CA&county=Inyo',
-  'Reno':         'https://alerts.weather.gov/search?state=NV&county=Washoe',
+  'Lakewood':     'https://www.weather.gov/sew/',   // Seattle WFO — covers Tacoma/Lakewood
+  'Groveland':    'https://www.weather.gov/sto/',   // Sacramento WFO — covers Sierra foothills
+  'Death Valley': 'https://www.weather.gov/vef/',   // Las Vegas WFO — covers Death Valley
+  'Reno':         'https://www.weather.gov/rev/',   // Reno WFO
 };
 
 // Watch thresholds — named so they're easy to tune
@@ -259,9 +259,10 @@ function stationLabel(name, temp) {
   const map = {
     'Lakewood':  'HOME BASE',
     'Groveland': 'SIERRA FOOTHILLS',
-    'Death Valley': temp >= 110 ? 'EXTREME HEAT WARNING' :
-                    temp >= 95  ? 'DANGEROUS HEAT' :
-                    temp >= 80  ? 'HOT & DRY' : 'EXTREME CONDITIONS',
+    'Death Valley': temp >= 110 ? 'TRIPLE DIGIT HEAT' :
+                    temp >= 100 ? 'SCORCHING' :
+                    temp >= 90  ? 'DESERT HEAT' :
+                    temp >= 80  ? 'WARM & DRY' : 'MOJAVE DESERT',
     'Reno': 'BIGGEST LITTLE CITY',
   };
   return map[name] || name.toUpperCase();

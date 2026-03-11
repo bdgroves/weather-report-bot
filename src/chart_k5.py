@@ -1,75 +1,56 @@
 """
-chart_k5.py — K5-style bold broadcast weather cards.
-
-Outputs per station:
-    weather_lakewood_k5.png
-    weather_groveland_k5.png
-    weather_death_valley_k5.png
-    weather_reno_k5.png
-    weather_report_k5.png  (2x2 combined)
+chart_k5.py — Clean scroll-friendly cards for Twitter/BlueSky.
+Simple, bold, glanceable. Matches dashboard aesthetic without the clutter.
 """
 
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-import matplotlib.patheffects as pe
-from matplotlib.patches import FancyBboxPatch, Circle, Ellipse, Rectangle, Arc
-import numpy as np
+from PIL import Image, ImageDraw, ImageFont
+import math
 from datetime import datetime
-import os
 
-# ── THEME ──────────────────────────────────────────────────────────────────────
-BG_ALERT = "#B22234"   # K5 red for alert days
-BG_MAIN  = "#1A3A5C"   # deep navy for normal days
-BG_DARK  = "#0D1F33"   # darker navy
-ACC      = "#38BDF8"   # cyan accent
-GOLD     = "#FFD60A"   # sunrise gold
-WH       = "#FFFFFF"
-MUT      = "#A8C4DC"
-F        = "DejaVu Sans"
+_FP = "/usr/share/fonts/truetype"
+def _f(name, size):
+    paths = {
+        "black":  f"{_FP}/dejavu/DejaVuSansCondensed-Bold.ttf",
+        "bold":   f"{_FP}/google-fonts/Poppins-Bold.ttf",
+        "medium": f"{_FP}/google-fonts/Poppins-Medium.ttf",
+        "reg":    f"{_FP}/google-fonts/Poppins-Regular.ttf",
+        "light":  f"{_FP}/google-fonts/Poppins-Light.ttf",
+    }
+    try:    return ImageFont.truetype(paths[name], size)
+    except: return ImageFont.load_default()
 
-STATION_COLORS = {
-    "Lakewood":     "#1A3A5C",
-    "Groveland":    "#1A3A5C",
-    "Death Valley": "#8B1A1A",
-    "Reno":         "#1A3A5C",
-}
+BG       = (5,   13,  26)
+PANEL    = (10,  24,  40)
+PANEL2   = (8,   18,  32)
+BORDER   = (15,  37,  64)
+ACC      = (56,  189, 248)
+ACC2     = (14,  165, 233)
+GOLD     = (255, 214, 10)
+ORANGE   = (249, 115, 22)
+MUTED    = (74,  100, 128)
+TEXT     = (200, 220, 240)
+WHITE    = (237, 243, 250)
+WATCH_BG = (204, 68,  0)
+WATCH_DK = (170, 51,  0)
 
-STATION_LABELS = {
-    "Lakewood":     "HOME BASE",
-    "Groveland":    "SIERRA FOOTHILLS",
-    "Death Valley": "EXTREME CONDITIONS",
-    "Reno":         "BIGGEST LITTLE CITY",
-}
-
-ALERT_THRESHOLD = {
-    "wind_speed": 25,
-    "pop": 70,
-    "temp_high": 100,
-    "temp_low": 20,
-}
-
+def _hex(h):
+    h = h.lstrip("#")
+    return tuple(int(h[i:i+2],16) for i in (0,2,4))
 
 def _tcol(t):
-    for thresh, c in [
-        (100,"#FF3333"),(90,"#FF6B35"),(80,"#F78166"),
-        (70,"#E3B341"),(60,"#3CB86B"),(50,"#58A6FF"),(32,"#79C0FF"),
-    ]:
-        if t >= thresh: return c
-    return "#B0D8FF"
-
+    for thr,c in [(100,"#FF3333"),(90,"#FF6B35"),(80,"#F78166"),
+                  (70,"#E3B341"),(60,"#3CB86B"),(50,"#58A6FF"),(32,"#79C0FF")]:
+        if t >= thr: return _hex(c)
+    return _hex("#B0D8FF")
 
 def _uv_info(u):
-    for thresh, c, l in [
-        (11,"#A855F7","EXTREME"),(8,"#EF4444","VERY HIGH"),
-        (6,"#F97316","HIGH"),(3,"#EAB308","MODERATE"),
-    ]:
-        if u >= thresh: return c, l
-    return "#22C55E", "LOW"
-
+    for thr,c,l in [(11,"#A855F7","EXTREME"),(8,"#EF4444","VERY HIGH"),
+                    (6,"#F97316","HIGH"),(3,"#EAB308","MODERATE")]:
+        if u >= thr: return _hex(c), l
+    return _hex("#22C55E"), "LOW"
 
 def _pick_icon(desc):
-    d = desc.lower()
+    d = (desc or "").lower()
     if any(w in d for w in ("thunder","storm")):          return "storm"
     if any(w in d for w in ("drizzle","rain","shower")):  return "rain"
     if any(w in d for w in ("snow","sleet","blizzard")):  return "snow"
@@ -79,400 +60,400 @@ def _pick_icon(desc):
     if any(w in d for w in ("clear","sunny")):            return "sunny"
     return "partly"
 
-
-def _fmt_time(t):
-    return t.lstrip("0") if t else t
-
-
-def _is_alert(loc):
-    return (
-        loc["wind_speed"] >= ALERT_THRESHOLD["wind_speed"] or
-        loc["pop"] >= ALERT_THRESHOLD["pop"] or
-        loc["temp_high"] >= ALERT_THRESHOLD["temp_high"] or
-        loc["temp_low"] <= ALERT_THRESHOLD["temp_low"]
-    )
-
-
-def _alert_reason(loc):
-    reasons = []
-    if loc["pop"] >= ALERT_THRESHOLD["pop"]:       reasons.append(f"HEAVY RAIN  {loc['pop']}%")
-    if loc["wind_speed"] >= ALERT_THRESHOLD["wind_speed"]: reasons.append(f"HIGH WINDS  {loc['wind_speed']} MPH")
-    if loc["temp_high"] >= ALERT_THRESHOLD["temp_high"]:  reasons.append(f"EXTREME HEAT  {loc['temp_high']}°")
-    if loc["temp_low"] <= ALERT_THRESHOLD["temp_low"]:    reasons.append(f"FREEZE WARNING  {loc['temp_low']}°")
-    return "  ·  ".join(reasons)
-
+STATION_LABELS = {
+    "Lakewood":     "HOME BASE",
+    "Groveland":    "SIERRA FOOTHILLS",
+    "Death Valley": "MOJAVE DESERT",
+    "Reno":         "BIGGEST LITTLE CITY",
+}
 
 def _station_label(name, temp):
     if name == "Death Valley":
-        if temp >= 110: return "EXTREME HEAT WARNING"
-        if temp >= 95:  return "DANGEROUS HEAT"
-        if temp >= 80:  return "HOT & DRY"
+        if temp >= 110: return "TRIPLE DIGIT HEAT"
+        if temp >= 100: return "SCORCHING"
+        if temp >= 90:  return "DESERT HEAT"
+        if temp >= 80:  return "WARM & DRY"
+        return "MOJAVE DESERT"
     return STATION_LABELS.get(name, name.upper())
 
+def _watch_reasons(loc):
+    r = []
+    if loc.get("pop",0)        >= 70:  r.append(f"Heavy Rain {loc['pop']}%")
+    if loc.get("wind_speed",0) >= 25:  r.append(f"High Winds {loc['wind_speed']} mph")
+    if loc.get("temp_high",0)  >= 100: r.append(f"Excessive Heat {loc['temp_high']}°F")
+    if loc.get("temp_low",99)  <= 25:  r.append(f"Freeze Watch {loc['temp_low']}°F")
+    return r
 
-# ── ICON DRAWING ───────────────────────────────────────────────────────────────
-def _sun(ax, cx, cy, r, col="#FFD60A", a=1.0):
-    ax.add_patch(Circle((cx,cy), r, facecolor=col, zorder=5, alpha=a))
-    for ang in np.linspace(0, 360, 9)[:-1]:
-        rad = np.radians(ang)
-        ax.plot([cx+r*1.35*np.cos(rad), cx+r*1.85*np.cos(rad)],
-                [cy+r*1.35*np.sin(rad), cy+r*1.85*np.sin(rad)],
-                color=col, lw=3, solid_capstyle="round", zorder=4, alpha=a*.9)
+def _fmt_time(t):
+    return (t or "—").lstrip("0")
 
+def _ctext(d, cx, y, txt, font, color):
+    d.text((cx, y), txt, font=font, fill=color, anchor="mt")
 
-def _cloud(ax, cx, cy, r, col="#C8D8E8", a=1.0):
-    for dx,dy,rr in [(0,0,r),(-.65*r,.1*r,.62*r),(.6*r,.05*r,.58*r),(-.2*r,-.35*r,.5*r),(.2*r,-.35*r,.5*r)]:
-        ax.add_patch(Ellipse((cx+dx,cy+dy),rr*2.2,rr*1.5,facecolor=col,zorder=5,alpha=a))
-    ax.add_patch(Rectangle((cx-r,cy-r*.55),r*2,r*.6,facecolor=col,zorder=4,alpha=a))
+def _rect(d, x, y, w, h, fill, radius=0, outline=None, outline_w=1):
+    if radius > 0:
+        d.rounded_rectangle([x,y,x+w,y+h], radius=radius, fill=fill,
+                             outline=outline, width=outline_w)
+    else:
+        d.rectangle([x,y,x+w,y+h], fill=fill,
+                    outline=outline, width=outline_w if outline else 0)
 
+# ── ICONS ─────────────────────────────────────────────────────────────────────
+def _draw_icon(img, cx, cy, r, kind):
+    d = ImageDraw.Draw(img)
+    def sun(x,y,sr,col=GOLD):
+        d.ellipse([x-sr,y-sr,x+sr,y+sr],fill=col)
+        for ang in range(0,360,45):
+            rad=math.radians(ang)
+            d.line([x+int(sr*1.45*math.cos(rad)),y+int(sr*1.45*math.sin(rad)),
+                    x+int(sr*1.95*math.cos(rad)),y+int(sr*1.95*math.sin(rad))],
+                   fill=col,width=max(3,sr//7))
+    def cloud(x,y,cr,col=(90,128,162)):
+        for dx,dy,rx,ry in [(0,0,cr,int(cr*.72)),(-int(cr*.62),int(cr*.08),int(cr*.60),int(cr*.48)),
+                             (int(cr*.58),int(cr*.05),int(cr*.56),int(cr*.44)),
+                             (-int(cr*.18),-int(cr*.28),int(cr*.48),int(cr*.38)),
+                             (int(cr*.18),-int(cr*.28),int(cr*.48),int(cr*.38))]:
+            d.ellipse([x+dx-rx,y+dy-ry,x+dx+rx,y+dy+ry],fill=col)
+        d.rectangle([x-cr,y-int(cr*.1),x+cr,y+int(cr*.28)],fill=col)
+    def drops(x,y,cr,col=_hex("#60A5FA")):
+        for i,dx in enumerate([-int(cr*.38),0,int(cr*.38),-int(cr*.18)]):
+            x0=x+dx; y0=y+int(cr*.32)+(i%2)*int(cr*.12)
+            d.line([x0,y0,x0-int(cr*.05),y0+int(cr*.48)],fill=col,width=max(2,cr//10))
 
-def _rain_drops(ax, cx, cy, r, col="#60A5FA"):
-    for dx, dy in [(-0.35,0),(0.05,-0.15),(0.4,0.05),(-0.1,0.2)]:
-        x0,y0 = cx+dx*r*2, cy+dy*r*2-r*0.8
-        ax.plot([x0,x0-0.08*r],[y0,y0-0.55*r],color=col,lw=2.2,
-                solid_capstyle="round",zorder=6)
-
-
-def _draw_icon(ax, cx, cy, r, kind):
-    if kind == "sunny":
-        _sun(ax, cx, cy, r)
-    elif kind == "partly":
-        _sun(ax, cx+r*.3, cy+r*.35, r*.68)
-        _cloud(ax, cx-r*.1, cy-r*.15, r*.75)
+    if kind=="sunny":   sun(cx,cy,r)
+    elif kind=="partly":
+        sun(cx+int(r*.32),cy-int(r*.32),int(r*.68))
+        cloud(cx-int(r*.08),cy+int(r*.12),int(r*.82),col=(65,95,128))
     elif kind in ("cloudy","fog"):
-        _cloud(ax, cx, cy, r*.9, col="#A0B8C8")
-        _cloud(ax, cx, cy+r*.3, r*.75)
-    elif kind == "rain":
-        _cloud(ax, cx, cy+r*.2, r*.8)
-        _rain_drops(ax, cx, cy, r)
-    elif kind == "storm":
-        _cloud(ax, cx, cy+r*.2, r*.8, col="#607080")
-        _rain_drops(ax, cx, cy, r, col="#93C5FD")
-        ax.plot([cx+.1*r,cx-.25*r,cx+.05*r,cx-.3*r],
-                [cy-r*.3,cy-r*.75,cy-r*.75,cy-r*1.3],
-                color="#FDE047",lw=3,solid_capstyle="round",zorder=7)
-    elif kind == "snow":
-        _cloud(ax, cx, cy+r*.2, r*.8)
-        for dx,dy in [(-0.4,0),(0,0),(0.4,0),(-0.2,-0.35),(0.2,-0.35)]:
-            ax.plot([cx+dx*r*1.2],[cy+dy*r*1.2-r*0.5],"o",
-                    color="white",ms=4,zorder=6)
+        cloud(cx,cy-int(r*.15),int(r*.88),col=(58,85,112))
+        cloud(cx,cy+int(r*.22),int(r*.72),col=(88,125,158))
+    elif kind=="rain":
+        cloud(cx,cy-int(r*.22),int(r*.85)); drops(cx,cy,r)
+    elif kind=="storm":
+        cloud(cx,cy-int(r*.22),int(r*.85),col=(50,72,95))
+        drops(cx,cy,r,col=_hex("#93C5FD"))
+        pts=[cx+int(r*.1),cy+int(r*.08),cx-int(r*.18),cy+int(r*.55),
+             cx+int(r*.06),cy+int(r*.55),cx-int(r*.22),cy+int(r*1.1)]
+        d.line(pts,fill=_hex("#FDE047"),width=max(3,r//8))
+    elif kind=="snow":
+        cloud(cx,cy-int(r*.22),int(r*.85))
+        for dxx,dyy in [(-int(r*.38),-int(r*.52)),(0,-int(r*.65)),(int(r*.38),-int(r*.52)),
+                        (-int(r*.18),-int(r*.82)),(int(r*.18),-int(r*.82))]:
+            s=max(4,r//9); d.ellipse([cx+dxx-s,cy+dyy-s,cx+dxx+s,cy+dyy+s],fill=WHITE)
+
+def _mini_icon(img, cx, cy, r, kind):
+    d = ImageDraw.Draw(img)
+    def msun(x,y,sr,col=GOLD):
+        d.ellipse([x-sr,y-sr,x+sr,y+sr],fill=col)
+        for ang in range(0,360,60):
+            rad=math.radians(ang)
+            d.line([x+int(sr*1.3*math.cos(rad)),y+int(sr*1.3*math.sin(rad)),
+                    x+int(sr*1.75*math.cos(rad)),y+int(sr*1.75*math.sin(rad))],
+                   fill=col,width=max(2,sr//6))
+    def mcloud(x,y,cr,col=(65,95,122)):
+        d.ellipse([x-cr,y-int(cr*.65),x+cr,y+int(cr*.65)],fill=col)
+        d.ellipse([x-int(cr*.55),y-cr,x+int(cr*.55),y],fill=col)
+        d.rectangle([x-cr,y-int(cr*.1),x+cr,y+int(cr*.45)],fill=col)
+    if kind=="sunny": msun(cx,cy,r)
+    elif kind=="partly":
+        msun(cx+int(r*.32),cy-int(r*.28),int(r*.66))
+        mcloud(cx-int(r*.08),cy+int(r*.12),int(r*.78),col=(58,88,115))
+    elif kind in ("cloudy","fog"): mcloud(cx,cy,r)
+    elif kind in ("rain","storm"):
+        mcloud(cx,cy-int(r*.18),int(r*.82),col=(45,68,90))
+        for dx in [-int(r*.36),0,int(r*.36)]:
+            d.line([cx+dx,cy+int(r*.38),cx+dx-int(r*.04),cy+int(r*.8)],
+                   fill=_hex("#60A5FA"),width=max(2,r//8))
+    elif kind=="snow":
+        mcloud(cx,cy-int(r*.18),int(r*.82),col=(45,68,90))
+        for dx in [-int(r*.36),0,int(r*.36)]:
+            s=max(3,r//7); d.ellipse([cx+dx-s,cy+int(r*.55)-s,cx+dx+s,cy+int(r*.55)+s],fill=WHITE)
 
 
-# ── FORECAST STRIP ─────────────────────────────────────────────────────────────
-def _forecast_strip(ax, forecast, bg):
-    """Draw 5-day mini forecast across bottom of card."""
-    ax.set_xlim(0, 100)
-    ax.set_ylim(0, 100)
-    ax.axis("off")
-    ax.add_patch(Rectangle((0,0),100,100,facecolor=BG_DARK,alpha=0.6))
+# ── SINGLE STATION CARD ───────────────────────────────────────────────────────
+def render_card(loc, forecast=None, out="weather_card.png"):
+    """
+    Layout (top to bottom):
+      - Watch banner (if triggered)
+      - Header:  LABEL · City, ST · CONDITION
+      - Hero:    Giant temp (left) | Icon (right)
+      - Stats:   H/L  ·  Humidity  ·  Wind  ·  UV  (single clean row)
+      - Forecast strip (if available)  — 5 days only for cleanliness
+      - Footer branding
+    """
+    has_watch = bool(_watch_reasons(loc))
+    has_fcst  = bool(forecast)
 
-    days = forecast[:5] if forecast else []
-    n = len(days)
-    if n == 0:
-        return
+    W = 1200
+    H_WATCH  = 52 if has_watch else 0
+    H_HEADER = 88
+    H_HERO   = 340
+    H_STATS  = 90
+    H_FCST   = 160 if has_fcst else 0
+    H_FOOT   = 44
+    H = H_WATCH + H_HEADER + H_HERO + H_STATS + H_FCST + H_FOOT
 
-    col_w = 100 / n
-    for i, day in enumerate(days):
-        x = i * col_w
-        cx = x + col_w/2
+    img = Image.new("RGB", (W, H), BG)
+    d   = ImageDraw.Draw(img)
 
-        # Day label
-        ax.text(cx, 88, day.get("day","").upper(), ha="center", va="center",
-                fontsize=7, color=MUT, fontfamily=F, fontweight="bold")
+    # Background texture (very subtle grid)
+    for gx in range(0, W, 44):
+        for gy in range(0, H, 44):
+            d.ellipse([gx-1,gy-1,gx+1,gy+1], fill=(11,22,40))
 
-        # Mini icon
-        ia = plt.axes([0,0,0,0])  # placeholder — we draw inline
-        kind = _pick_icon(day.get("description",""))
-        # Simple dot-based mini icons
-        if kind == "sunny":
-            ax.add_patch(Circle((cx, 68), 7, facecolor="#FFD60A", zorder=5))
-        elif kind == "partly":
-            ax.add_patch(Circle((cx+2, 71), 5, facecolor="#FFD60A", zorder=4))
-            ax.add_patch(Ellipse((cx-1,66),14,9,facecolor="#A0B8C8",zorder=5))
-        elif kind in ("cloudy","fog"):
-            ax.add_patch(Ellipse((cx,68),16,10,facecolor="#607898",zorder=5))
-        elif kind in ("rain","storm"):
-            ax.add_patch(Ellipse((cx,70),16,10,facecolor="#607898",zorder=5))
-            for dx in [-4,0,4]:
-                ax.plot([cx+dx,cx+dx-1],[62,57],color="#60A5FA",lw=1.5,zorder=6)
-        elif kind == "snow":
-            ax.add_patch(Ellipse((cx,70),16,10,facecolor="#607898",zorder=5))
-            for dx in [-4,0,4]:
-                ax.plot([cx+dx],[61],"o",color="white",ms=2.5,zorder=6)
+    y = 0
 
-        # Hi / Lo
-        hi = day.get("temp_high", "")
-        lo = day.get("temp_low", "")
-        ax.text(cx-4, 50, f"{hi}°" if hi != "" else "--",
-                ha="center", va="center", fontsize=9,
-                color=_tcol(hi) if hi != "" else MUT,
-                fontfamily=F, fontweight="bold")
-        ax.text(cx+4, 50, f"{lo}°" if lo != "" else "--",
-                ha="center", va="center", fontsize=8,
-                color=_tcol(lo) if lo != "" else MUT, fontfamily=F)
+    # ── WATCH BANNER ──────────────────────────────────────────────────────────
+    if has_watch:
+        reasons = _watch_reasons(loc)
+        d.rectangle([0,y,W,y+H_WATCH], fill=WATCH_BG)
+        d.rectangle([0,y,int(W*.18),y+H_WATCH], fill=WATCH_DK)
+        d.text((14,y+H_WATCH//2), "WEATHER WATCH",
+               font=_f("bold",20), fill=WHITE, anchor="lm")
+        d.text((int(W*.19),y+H_WATCH//2), "  ·  ".join(reasons),
+               font=_f("reg",18), fill=(255,208,160), anchor="lm")
+        d.text((W-14,y+H_WATCH//2), "NWS Alerts",
+               font=_f("light",17), fill=(255,208,160), anchor="rm")
+        y += H_WATCH
 
-        # Precip chance
-        pop = day.get("pop", 0)
-        if pop >= 20:
-            ax.text(cx, 33, f"☔ {pop}%", ha="center", fontsize=7,
-                    color="#60A5FA", fontfamily=F)
+    # ── HEADER ────────────────────────────────────────────────────────────────
+    d.rectangle([0,y,W,y+H_HEADER], fill=PANEL)
+    d.rectangle([0,y,W,y+5], fill=ACC)  # cyan accent stripe
 
-        # Divider
-        if i > 0:
-            ax.plot([x,x],[10,95],color="#1A3050",lw=0.8,alpha=0.6)
+    slabel = _station_label(loc["name"], loc["temp"])
+    # Label pill left
+    lw = int(_f("bold",16).getlength(slabel)) + 24
+    _rect(d, 18, y+14, lw, 26, (0,40,65), radius=4)
+    d.text((18+lw//2, y+14), slabel,
+           font=_f("bold",16), fill=ACC, anchor="mt")
 
+    # City name
+    d.text((18, y+44), f"{loc['name']}, {loc['state']}",
+           font=_f("black",38), fill=WHITE, anchor="lt")
 
-# ── MAIN K5 CARD ───────────────────────────────────────────────────────────────
-def render_k5_card(loc, forecast=None, out="weather_k5.png"):
-    alert     = _is_alert(loc)
-    bg        = "#8B1A1A" if loc["name"] == "Death Valley" and loc["temp"] >= 90 else STATION_COLORS.get(loc["name"], BG_MAIN)
-    icon_type = _pick_icon(loc.get("description",""))
-    slabel    = _station_label(loc["name"], loc["temp"])
-    tc        = _tcol(loc["temp"])
-    _, uvlbl  = _uv_info(loc["uv_index"])
-    has_forecast = forecast and len(forecast) > 0
+    # Condition — right side
+    cond = loc.get("description","").upper()
+    d.text((W-20, y+H_HEADER//2), cond,
+           font=_f("bold",24), fill=TEXT, anchor="rm")
 
-    DPI = 150
-    fig = plt.figure(figsize=(8.0, 4.5), dpi=DPI, facecolor=bg)
-
-    # ── Background gradient effect
-    ba = fig.add_axes([0,0,1,1], zorder=0)
-    ba.set_xlim(0,1); ba.set_ylim(0,1); ba.axis("off")
-    ba.add_patch(Rectangle((0,0),1,1, facecolor=bg))
-    ba.add_patch(Ellipse((.85,.5),1.0,.9, facecolor=BG_DARK, alpha=.45, zorder=1))
-    ba.add_patch(Ellipse((.12,.85),.6,.5, facecolor=BG_DARK, alpha=.25, zorder=1))
-
-    # ── FIRST ALERT banner (if alert conditions)
-    if alert:
-        ab = fig.add_axes([0,.91,1,.09], zorder=20)
-        ab.set_xlim(0,1); ab.set_ylim(0,1); ab.axis("off")
-        ab.add_patch(Rectangle((0,0),1,1, facecolor="#CC0000"))
-        ab.add_patch(Rectangle((0,0),.25,1, facecolor="#AA0000"))
-        ab.text(.02,.5,"⚠ FIRST ALERT", ha="left", va="center",
-                fontsize=9, color=WH, fontweight="bold", fontfamily=F)
-        ab.text(.28,.5, _alert_reason(loc), ha="left", va="center",
-                fontsize=8.5, color=WH, fontfamily=F)
-        header_top = .91
-    else:
-        header_top = 1.0
-
-    # ── HEADER BAR
-    hh = .11
-    ha = fig.add_axes([0, header_top-hh, 1, hh], zorder=15)
-    ha.set_xlim(0,1); ha.set_ylim(0,1); ha.axis("off")
-    ha.add_patch(Rectangle((0,0),1,1, facecolor=BG_DARK, alpha=.85))
-    ha.add_patch(Rectangle((0,.85),1,.15, facecolor=ACC, alpha=.9))
-    ha.text(.018,.60, slabel, fontsize=8, color=ACC,
-            fontweight="bold", fontfamily=F, va="center")
-    ha.text(.018,.18, f"{loc['name']}, {loc['state']}",
-            fontsize=16, color=WH, fontweight="bold", fontfamily=F, va="center")
-
-    # Condition badge — center
-    ha.add_patch(FancyBboxPatch((.35,.08),.30,.84,
-                                 boxstyle="round,pad=0.02",
-                                 facecolor="#0A1C30", edgecolor=ACC, lw=1.5, zorder=5))
-    ha.text(.50,.50, loc["description"].upper(),
-            ha="center", va="center", fontsize=8.5,
-            color=WH, fontweight="bold", fontfamily=F, zorder=6)
-
-    # Timestamp right
+    # Timestamp — small, under condition
     now = datetime.now()
-    ts = now.strftime("%I:%M %p").lstrip("0") + f"  ·  {now.strftime('%b')} {now.day}"
-    ha.text(.988,.50, ts, ha="right", va="center",
-            fontsize=8, color=MUT, fontfamily=F)
+    ts  = now.strftime("%-I:%M %p") + f"  ·  {now.strftime('%b %-d')}"
+    d.text((W-20, y+H_HEADER-16), ts,
+           font=_f("light",16), fill=MUTED, anchor="rb")
 
-    # ── FORECAST STRIP (bottom)
-    forecast_h = .20 if has_forecast else 0
-    fs_bottom  = .0
+    y += H_HEADER
 
-    if has_forecast:
-        fa = fig.add_axes([0, fs_bottom, 1, forecast_h], zorder=10)
-        _forecast_strip(fa, forecast, bg)
-        body_bottom = forecast_h
-    else:
-        body_bottom = 0.0
+    # ── HERO: Temperature + Icon ───────────────────────────────────────────────
+    hero_top = y
+    tc = _tcol(loc["temp"])
 
-    # ── BODY
-    body_top    = header_top - hh
-    body_height = body_top - body_bottom
-    body = fig.add_axes([0, body_bottom, 1, body_height], zorder=8)
-    body.set_xlim(0,100); body.set_ylim(0,100); body.axis("off")
+    # Icon — right half, vertically centered
+    icon_cx = int(W * 0.78)
+    icon_cy = hero_top + H_HERO//2 - 10
+    _draw_icon(img, icon_cx, icon_cy, 118, _pick_icon(loc.get("description","")))
 
-    # Left half — ICON + TEMP
-    # Big icon
-    icon_ax = fig.add_axes([.02, body_bottom + body_height*.42,
-                             .32, body_height*.52], zorder=9)
-    icon_ax.set_xlim(-1.5,1.5); icon_ax.set_ylim(-1.5,1.5); icon_ax.axis("off")
-    _draw_icon(icon_ax, 0, 0, 1.0, icon_type)
+    # Giant temperature — left
+    tstr = f"{loc['temp']}°"
+    # shadow
+    d.text((W//2-30+4, hero_top+20), tstr,
+           font=_f("black",270), fill=(0,5,12), anchor="mt")
+    d.text((W//2-30,   hero_top+18), tstr,
+           font=_f("black",270), fill=tc, anchor="mt")
 
-    # Giant temperature
-    body.text(22, 54, f"{loc['temp']}°",
-              ha="center", va="center",
-              fontsize=88, color=tc, fontfamily=F, fontweight="bold",
-              path_effects=[pe.withStroke(linewidth=8, foreground=BG_DARK)])
+    # Feels like — below temp
+    d.text((W//2-30, hero_top+H_HERO-52),
+           f"Feels like {loc['feels_like']}°F",
+           font=_f("light",26), fill=MUTED, anchor="mt")
 
-    # Feels like
-    body.text(22, 22, f"FEELS LIKE  {loc['feels_like']}°F",
-              ha="center", va="center", fontsize=9, color=MUT,
-              fontfamily=F, fontweight="bold")
+    y += H_HERO
 
-    # Hi / Lo — big and bold like K5
-    body.add_patch(FancyBboxPatch((1,8),(40),(13),
-                                   boxstyle="round,pad=0.5",
-                                   facecolor=BG_DARK, edgecolor="#1A3050",
-                                   alpha=0.7, lw=1.2, zorder=4))
-    body.plot([21,21],[9,20], color="#1A3050", lw=1.2, zorder=5)
-    body.text(11, 14.5, f"H  {loc['temp_high']}°",
-              ha="center", va="center", fontsize=14,
-              color=_tcol(loc["temp_high"]), fontfamily=F, fontweight="bold", zorder=6)
-    body.text(31, 14.5, f"L  {loc['temp_low']}°",
-              ha="center", va="center", fontsize=14,
-              color=_tcol(loc["temp_low"]), fontfamily=F, fontweight="bold", zorder=6)
+    # ── STATS ROW: H/L · Humidity · Wind · UV ─────────────────────────────────
+    # Dark separator
+    d.rectangle([0,y,W,y+H_STATS], fill=PANEL2)
+    d.line([0,y,W,y], fill=BORDER, width=1)
+    d.line([0,y+H_STATS,W,y+H_STATS], fill=BORDER, width=1)
 
-    # Right half — KPI grid
-    # Vertical divider
-    body.plot([48,48],[2,98], color="#1A3050", lw=1.0, alpha=0.6)
+    uvc, uvlbl = _uv_info(loc["uv_index"])
 
-    kpis = [
-        ("💧", "HUMIDITY",   f"{loc['humidity']}%",       ACC),
-        ("💨", "WIND",       f"{loc['wind_speed']} mph {loc['wind_dir']}", WH),
-        ("🌞", "UV INDEX",   f"{loc['uv_index']}  {uvlbl}", _uv_info(loc['uv_index'])[0]),
-        ("☔", "PRECIP",     f"{loc['pop']}%",            "#60A5FA"),
-        ("☁️", "CLOUDS",     f"{loc['cloud_cover']}%",    MUT),
-        ("👁", "VISIBILITY", f"{loc['visibility']} mi",   WH),
+    stats = [
+        (f"H {loc['temp_high']}°  L {loc['temp_low']}°",
+         f"High / Low", WHITE),
+        (f"{loc['humidity']}%",   "Humidity",  _hex("#38BDF8")),
+        (f"{loc['wind_speed']} mph {loc.get('wind_dir','')}",
+         "Wind",        WHITE),
+        (f"UV {loc['uv_index']}  {uvlbl}",
+         "UV Index",    uvc),
     ]
 
-    cols = [55, 78]
-    rows = [82, 55, 28]
-    for idx, (emoji, label, value, color) in enumerate(kpis):
-        col = idx % 2
-        row = idx // 2
-        cx  = cols[col]
-        cy  = rows[row]
+    col_w = W // len(stats)
+    for i,(value,label,color) in enumerate(stats):
+        cx2 = i*col_w + col_w//2
+        if i > 0:
+            d.line([i*col_w,y+12,i*col_w,y+H_STATS-12], fill=BORDER, width=1)
+        _ctext(d, cx2, y+10,  value, _f("bold",26),  color)
+        _ctext(d, cx2, y+52,  label, _f("light",18), MUTED)
 
-        body.add_patch(FancyBboxPatch((cx-13, cy-14),(26),(17),
-                                       boxstyle="round,pad=0.5",
-                                       facecolor=BG_DARK, edgecolor="#1A3050",
-                                       alpha=0.7, lw=0.8, zorder=4))
-        body.text(cx, cy-3,  label, ha="center", fontsize=6,
-                  color=MUT, fontfamily=F, zorder=6)
-        body.text(cx, cy-10, value, ha="center", fontsize=9.5,
-                  color=color, fontweight="bold", fontfamily=F, zorder=6)
+    y += H_STATS
 
-    # Sunrise / Sunset
-    body.add_patch(FancyBboxPatch((49,5),(48),(13),
-                                   boxstyle="round,pad=0.5",
-                                   facecolor=BG_DARK, edgecolor="#1A3050",
-                                   alpha=0.7, lw=0.8, zorder=4))
-    body.plot([73,73],[6,17], color="#1A3050", lw=0.8, zorder=5)
-    body.text(61, 13.5, f"🌅 {_fmt_time(loc['sunrise'])}",
-              ha="center", fontsize=8.5, color=GOLD,
-              fontweight="bold", fontfamily=F, zorder=6)
-    body.text(85, 13.5, f"🌇 {_fmt_time(loc['sunset'])}",
-              ha="center", fontsize=8.5, color="#F97316",
-              fontweight="bold", fontfamily=F, zorder=6)
+    # ── 7-DAY FORECAST (5 days shown — cleaner) ───────────────────────────────
+    if has_fcst:
+        d.rectangle([0,y,W,y+H_FCST], fill=(7,16,28))
+        d.line([0,y,W,y], fill=BORDER, width=1)
+        # "7-DAY" label
+        d.text((18,y+10), "FORECAST", font=_f("bold",15), fill=MUTED, anchor="lt")
 
-    # Branding
-    body.text(99, 1, "@bdgroves  ·  OpenWeatherMap",
-              ha="right", va="bottom", fontsize=5.5,
-              color="#2A3F55", fontfamily=F)
+        days  = (forecast or [])[:5]  # 5 days — roomier
+        n     = len(days)
+        col_w2 = W // n
 
-    plt.savefig(out, dpi=DPI, bbox_inches="tight",
-                facecolor=bg, edgecolor="none", pad_inches=0.02)
-    plt.close(fig)
-    print(f"  K5 card saved: {out}")
+        for i,day in enumerate(days):
+            cx3   = i*col_w2 + col_w2//2
+            kind  = _pick_icon(day.get("description",""))
 
+            if i > 0:
+                d.line([i*col_w2,y+10,i*col_w2,y+H_FCST-10], fill=BORDER, width=1)
 
-def render_k5_combined(weather_data, forecast_data=None, out="weather_report_k5.png"):
-    """2x2 grid of K5 cards."""
-    DPI = 150
-    fig = plt.figure(figsize=(16.0, 9.0), dpi=DPI, facecolor="#050D1A")
+            # Day
+            _ctext(d, cx3, y+14, day.get("day","").upper(), _f("bold",20), TEXT)
 
-    positions = [(0,.5,.5,.5),(0.5,.5,.5,.5),(0,0,.5,.5),(0.5,0,.5,.5)]
+            # Icon
+            _mini_icon(img, cx3, y+72, 32, kind)
 
-    for i, loc in enumerate(weather_data[:4]):
-        x0, y0, w, h = positions[i]
-        sub = fig.add_axes([x0+.005, y0+.005, w-.010, h-.010])
-        sub.set_xlim(0,1); sub.set_ylim(0,1); sub.axis("off")
+            # Temps side by side
+            hi  = day.get("temp_high","")
+            lo  = day.get("temp_low","")
+            gap = col_w2//5
+            _ctext(d, cx3-gap//2, y+110,
+                   f"{hi}°" if hi!="" else "—",
+                   _f("bold",24), _tcol(hi) if hi!="" else MUTED)
+            _ctext(d, cx3+gap//2, y+110,
+                   f"{lo}°" if lo!="" else "—",
+                   _f("medium",22), _tcol(lo) if lo!="" else MUTED)
 
-        bg = STATION_COLORS.get(loc["name"], BG_MAIN)
-        if loc["name"] == "Death Valley" and loc["temp"] >= 90:
-            bg = "#8B1A1A"
+            # Precip
+            pop = day.get("pop",0)
+            if pop >= 20:
+                _ctext(d, cx3, y+138, f"{pop}%", _f("light",17), _hex("#60A5FA"))
 
-        sub.add_patch(Rectangle((0,0),1,1, facecolor=bg))
-        sub.add_patch(Ellipse((.85,.5),1.0,.9, facecolor=BG_DARK, alpha=.4))
+        y += H_FCST
 
-        tc = _tcol(loc["temp"])
-        icon_type = _pick_icon(loc.get("description",""))
-        slabel = _station_label(loc["name"], loc["temp"])
+    # ── FOOTER ────────────────────────────────────────────────────────────────
+    d.rectangle([0,y,W,H], fill=(5,11,22))
+    d.line([0,y,W,y], fill=BORDER, width=1)
+    d.text((W//2, y+12), "@bdgroves  ·  OpenWeatherMap  ·  West Coast Weather Intelligence",
+           font=_f("light",16), fill=MUTED, anchor="mt")
 
-        # Header strip
-        sub.add_patch(Rectangle((0,.88),1,.12, facecolor=BG_DARK, alpha=.9))
-        sub.add_patch(Rectangle((0,.96),1,.04, facecolor=ACC, alpha=.8))
-        sub.text(.02,.935, slabel, fontsize=6, color=ACC,
-                 fontweight="bold", fontfamily=F, va="center", transform=sub.transAxes)
-        sub.text(.02,.895, f"{loc['name']}, {loc['state']}",
-                 fontsize=11, color=WH, fontweight="bold",
-                 fontfamily=F, va="center", transform=sub.transAxes)
-        sub.text(.98,.92, loc["description"].upper(),
-                 ha="right", fontsize=7, color=MUT,
-                 fontfamily=F, va="center", transform=sub.transAxes)
-
-        # Icon (left side)
-        ia = fig.add_axes([x0+.01, y0+h*.38, w*.28, h*.48])
-        ia.set_xlim(-1.5,1.5); ia.set_ylim(-1.5,1.5); ia.axis("off")
-        _draw_icon(ia, 0, 0, 1.0, icon_type)
-
-        # Giant temp
-        sub.text(.35,.54, f"{loc['temp']}°",
-                 ha="center", va="center",
-                 fontsize=62, color=tc, fontfamily=F, fontweight="bold",
-                 transform=sub.transAxes,
-                 path_effects=[pe.withStroke(linewidth=6, foreground=BG_DARK)])
-
-        # H/L
-        sub.text(.26,.25, f"H {loc['temp_high']}°",
-                 ha="center", fontsize=12,
-                 color=_tcol(loc["temp_high"]), fontfamily=F, fontweight="bold",
-                 transform=sub.transAxes)
-        sub.text(.44,.25, f"L {loc['temp_low']}°",
-                 ha="center", fontsize=12,
-                 color=_tcol(loc["temp_low"]), fontfamily=F, fontweight="bold",
-                 transform=sub.transAxes)
-
-        # Right KPIs
-        kpis = [
-            (f"💧 {loc['humidity']}%",    .72, .78),
-            (f"💨 {loc['wind_speed']} mph", .72, .62),
-            (f"☔ {loc['pop']}%",          .72, .46),
-            (f"🌞 UV {loc['uv_index']}",   .72, .30),
-            (f"🌅 {_fmt_time(loc['sunrise'])}  🌇 {_fmt_time(loc['sunset'])}", .72, .14),
-        ]
-        for text, tx, ty in kpis:
-            sub.text(tx, ty, text, ha="left", fontsize=9,
-                     color=WH, fontfamily=F, transform=sub.transAxes)
-
-        # Alert badge
-        if _is_alert(loc):
-            sub.add_patch(FancyBboxPatch((.55,.04),(.42),(.10),
-                                          boxstyle="round,pad=0.01",
-                                          facecolor="#CC0000", zorder=10,
-                                          transform=sub.transAxes))
-            sub.text(.76,.09, "⚠ FIRST ALERT",
-                     ha="center", va="center", fontsize=7.5,
-                     color=WH, fontweight="bold", fontfamily=F,
-                     transform=sub.transAxes, zorder=11)
-
-    plt.savefig(out, dpi=DPI, bbox_inches="tight",
-                facecolor="#050D1A", edgecolor="none", pad_inches=0.04)
-    plt.close(fig)
-    print(f"  K5 combined saved: {out}")
+    img.save(out, quality=95)
+    print(f"  Card: {out}  ({W}×{H})")
 
 
-def create_k5_charts(weather_data, forecast_data=None, report_period="morning", timestamp=""):
-    """Generate all K5 cards. Call from main.py alongside existing chart."""
+# ── 2×2 COMBINED ──────────────────────────────────────────────────────────────
+def render_combined(weather_data, forecast_data=None, out="weather_report_k5.png"):
+    """2×2 grid — same clean aesthetic, compact per-cell."""
+    CW, CH = 1200, 675
+    GAP    = 4
+    W = CW*2 + GAP;  H = CH*2 + GAP
+
+    canvas = Image.new("RGB", (W,H), (3,8,16))
+    positions = [(0,0),(CW+GAP,0),(0,CH+GAP),(CW+GAP,CH+GAP)]
+
+    for i,loc in enumerate(weather_data[:4]):
+        tmp = f"/tmp/_cell_{i}.png"
+        _render_cell(loc, tmp, CW, CH)
+        canvas.paste(Image.open(tmp), positions[i])
+
+    canvas.save(out, quality=95)
+    print(f"  Combined: {out}  ({W}×{H})")
+
+
+def _render_cell(loc, out, W, H):
+    """Compact single-cell version for 2×2 grid."""
+    has_watch = bool(_watch_reasons(loc))
+
+    img = Image.new("RGB", (W,H), BG)
+    d   = ImageDraw.Draw(img)
+    for gx in range(0,W,44):
+        for gy in range(0,H,44):
+            d.ellipse([gx-1,gy-1,gx+1,gy+1], fill=(11,22,40))
+
+    y = 0
+    H_WATCH  = 42 if has_watch else 0
+    H_HEADER = 74
+    H_HERO   = H - H_WATCH - H_HEADER - 80 - 40
+    H_STATS  = 80
+    H_FOOT   = 40
+
+    if has_watch:
+        reasons = _watch_reasons(loc)
+        d.rectangle([0,y,W,y+H_WATCH], fill=WATCH_BG)
+        d.rectangle([0,y,160,y+H_WATCH], fill=WATCH_DK)
+        d.text((12,y+H_WATCH//2), "WEATHER WATCH",
+               font=_f("bold",16), fill=WHITE, anchor="lm")
+        d.text((168,y+H_WATCH//2), "  ·  ".join(reasons),
+               font=_f("reg",14), fill=(255,208,160), anchor="lm")
+        y += H_WATCH
+
+    # Header
+    d.rectangle([0,y,W,y+H_HEADER], fill=PANEL)
+    d.rectangle([0,y,W,y+4], fill=ACC)
+    slabel = _station_label(loc["name"], loc["temp"])
+    d.text((14,y+10), slabel, font=_f("bold",14), fill=ACC, anchor="lt")
+    d.text((14,y+28), f"{loc['name']}, {loc['state']}",
+           font=_f("black",32), fill=WHITE, anchor="lt")
+    cond = loc.get("description","").upper()
+    d.text((W-14,y+H_HEADER//2), cond,
+           font=_f("bold",18), fill=TEXT, anchor="rm")
+    y += H_HEADER
+
+    # Hero
+    tc = _tcol(loc["temp"])
+    icon_cx = int(W*.78); icon_cy = y + H_HERO//2
+    _draw_icon(img, icon_cx, icon_cy, 80, _pick_icon(loc.get("description","")))
+
+    tstr = f"{loc['temp']}°"
+    d.text((W//2-24+3, y+12), tstr, font=_f("black",195), fill=(0,5,12), anchor="mt")
+    d.text((W//2-24,   y+10), tstr, font=_f("black",195), fill=tc, anchor="mt")
+    d.text((W//2-24, y+H_HERO-28),
+           f"Feels like {loc['feels_like']}°F",
+           font=_f("light",19), fill=MUTED, anchor="mt")
+    y += H_HERO
+
+    # Stats
+    d.rectangle([0,y,W,y+H_STATS], fill=PANEL2)
+    d.line([0,y,W,y], fill=BORDER, width=1)
+    d.line([0,y+H_STATS,W,y+H_STATS], fill=BORDER, width=1)
+
+    uvc,uvlbl = _uv_info(loc["uv_index"])
+    stats = [
+        (f"H {loc['temp_high']}°  L {loc['temp_low']}°", "High / Low", WHITE),
+        (f"{loc['humidity']}%", "Humidity", _hex("#38BDF8")),
+        (f"{loc['wind_speed']} mph", "Wind", WHITE),
+        (f"UV {loc['uv_index']}  {uvlbl}", "UV Index", uvc),
+    ]
+    cw2 = W//len(stats)
+    for i,(value,label,color) in enumerate(stats):
+        cx2 = i*cw2 + cw2//2
+        if i > 0: d.line([i*cw2,y+10,i*cw2,y+H_STATS-10], fill=BORDER, width=1)
+        _ctext(d, cx2, y+8,  value, _f("bold",20), color)
+        _ctext(d, cx2, y+44, label, _f("light",14), MUTED)
+    y += H_STATS
+
+    # Footer
+    d.rectangle([0,y,W,H], fill=(5,11,22))
+    d.line([0,y,W,y], fill=BORDER, width=1)
+    d.text((W//2,y+10), "@bdgroves  ·  OpenWeatherMap",
+           font=_f("light",14), fill=MUTED, anchor="mt")
+
+    img.save(out, quality=95)
+
+
+# ── PUBLIC API ─────────────────────────────────────────────────────────────────
+def create_k5_charts(weather_data, forecast_data=None,
+                     report_period="morning", timestamp=""):
     for loc in weather_data:
-        slug = loc["name"].lower().replace(" ", "_")
+        slug     = loc["name"].lower().replace(" ","_")
         forecast = (forecast_data or {}).get(loc["name"], [])
-        render_k5_card(loc, forecast=forecast, out=f"weather_{slug}_k5.png")
-    render_k5_combined(weather_data, forecast_data=forecast_data, out="weather_report_k5.png")
+        render_card(loc, forecast=forecast, out=f"weather_{slug}_k5.png")
+    render_combined(weather_data, forecast_data=forecast_data,
+                    out="weather_report_k5.png")
