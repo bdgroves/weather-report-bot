@@ -7,34 +7,32 @@ sys.path.insert(0, os.path.dirname(__file__))
 from weather import get_weather_data
 
 STATION_HASHTAGS = {
-    "Lakewood":     "#Lakewood #LakewoodWA #WAwx #PNWwx #PNW #Tacoma #wxtwitter",
-    "Groveland":    "#Groveland #GrovelandCA #CAwx #SierraNevada #Yosemite #wxtwitter",
-    "Death Valley": "#DeathValley #DeathValleyNP #CAwx #MojaveDesert #wxtwitter",
-    "Reno":         "#Reno #RenoNV #NVwx #GreatBasin #HighDesert #wxtwitter",
+    "Lakewood":     "#Lakewood #LakewoodWA #Tacoma #PNW #PNWwx #WAwx #SeattleWx #wxtwitter",
+    "Groveland":    "#Groveland #TuolumneCounty #SierraNevada #Yosemite #CAwx #NorCalWx #wxtwitter",
+    "Death Valley": "#DeathValley #DeathValleyNP #MojaveDesert #CAwx #SoCalWx #DesertWx #wxtwitter",
+    "Reno":         "#Reno #RenoNV #TahoeWx #NVwx #GreatBasin #HighDesert #wxtwitter",
 }
-LEAD_HASHTAGS = "#Weather #WestCoast #wxtwitter #DailyWeather #WeatherReport"
+LEAD_HASHTAGS = (
+    "#Weather #WestCoast #WAwx #CAwx #NVwx #PNW #PNWwx "
+    "#wxtwitter #DailyWeather #WeatherReport #ClimateWatch"
+)
 STATION_ORDER = ["Lakewood", "Groveland", "Death Valley", "Reno"]
 
 
 def _build_station_caption(loc, period_text, timestamp):
-    name     = loc["name"]
-    htags    = STATION_HASHTAGS.get(name, "")
+    """Per-station tweet — condensed format fits within 270 chars with full hashtags."""
+    name  = loc["name"]
+    htags = STATION_HASHTAGS.get(name, "")
     lines = [
-        f"{loc.get('emoji','')} {name}, {loc['state']}",
-        f"{period_text} Report | {timestamp}",
-        f"Temp: {loc['temp']}F (Feels {loc['feels_like']}F) H {loc['temp_high']} L {loc['temp_low']}",
-        f"Humidity: {loc['humidity']}% Precip: {loc['pop']}% Wind: {loc['wind_speed']} mph {loc.get('wind_dir','')}",
-        f"UV: {loc['uv_index']} Clouds: {loc['cloud_cover']}% Vis: {loc['visibility']} mi",
-        f"Sunrise: {loc['sunrise'].lstrip('0')} Sunset: {loc['sunset'].lstrip('0')}",
+        f"{name}, {loc['state']}  |  {period_text} Report",
+        f"Temp: {loc['temp']}F  Feels {loc['feels_like']}F  H {loc['temp_high']}  L {loc['temp_low']}",
+        f"Humidity: {loc['humidity']}%  Precip: {loc['pop']}%  Wind: {loc['wind_speed']} mph {loc.get('wind_dir','')}",
+        f"UV: {loc['uv_index']}  Clouds: {loc['cloud_cover']}%  Vis: {loc['visibility']} mi",
+        f"Sunrise: {loc['sunrise'].lstrip('0')}  Sunset: {loc['sunset'].lstrip('0')}",
         "",
         htags,
-        "#DailyWeather #WeatherReport",
     ]
-    text = "\n".join(lines)
-    if len(text) > 270:
-        lines[-2] = ""
-        text = "\n".join(lines)
-    return text
+    return "\n".join(lines)
 
 
 def post_to_twitter():
