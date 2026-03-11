@@ -16,9 +16,6 @@ jobs:
           pixi-version: latest
           cache: true
 
-      - name: Download emoji assets
-        run: pixi run download-emoji
-
       # ── Determine report period + whether to post social ──────────────────
       - name: Determine report period
         id: report_time
