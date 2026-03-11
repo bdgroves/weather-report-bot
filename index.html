@@ -237,35 +237,75 @@ const NWS_URLS = {
 };
 
 // Watch thresholds — named so they're easy to tune
-const WATCH = {
-  wind_speed: 25,   // mph — high wind watch
-  pop:        70,   // % — heavy rain watch
-  temp_high:  100,  // °F — excessive heat watch
-  temp_low:   25,   // °F — freeze watch
+// Per-station watch thresholds
+const WATCH_T = {
+  'Lakewood':     { pop: null, wind: 20, heat: 90,  freeze: 32 },
+  'Groveland':    { pop: 60,   wind: 20, heat: 95,  freeze: 28 },
+  'Death Valley': { pop: 30,   wind: 20, heat: 110, freeze: 35 },
+  'Reno':         { pop: 50,   wind: 20, heat: 100, freeze: 28 },
 };
+const WATCH_DEFAULT = { pop: 70, wind: 20, heat: 100, freeze: 32 };
 
 function watchReasons(loc) {
+  const t = WATCH_T[loc.name] || WATCH_DEFAULT;
   const r = [];
-  if (loc.pop        >= WATCH.pop)        r.push(`Heavy Rain ${loc.pop}%`);
-  if (loc.wind_speed >= WATCH.wind_speed) r.push(`High Winds ${loc.wind_speed} mph`);
-  if (loc.temp_high  >= WATCH.temp_high)  r.push(`Excessive Heat ${loc.temp_high}°F`);
-  if (loc.temp_low   <= WATCH.temp_low)   r.push(`Freeze Watch — Low ${loc.temp_low}°F`);
+  if (t.pop    && loc.pop        >= t.pop)    r.push(`Heavy Rain ${loc.pop}%`);
+  if (loc.wind_speed >= t.wind)               r.push(`High Winds ${loc.wind_speed} mph`);
+  if (loc.temp_high  >= t.heat)               r.push(`Excessive Heat ${loc.temp_high}°F`);
+  if (loc.temp_low   <= t.freeze)             r.push(`Freeze Watch ${loc.temp_low}°F`);
+  (loc.nws_alerts || []).forEach(a => { if (!r.includes(a)) r.push(a); });
   return r;
 }
 
 function isWatch(loc) { return watchReasons(loc).length > 0; }
 
-function stationLabel(name, temp) {
-  const map = {
-    'Lakewood':  'HOME BASE',
-    'Groveland': 'SIERRA FOOTHILLS',
-    'Death Valley': temp >= 110 ? 'TRIPLE DIGIT HEAT' :
-                    temp >= 100 ? 'SCORCHING' :
-                    temp >= 90  ? 'DESERT HEAT' :
-                    temp >= 80  ? 'WARM & DRY' : 'MOJAVE DESERT',
-    'Reno': 'BIGGEST LITTLE CITY',
-  };
-  return map[name] || name.toUpperCase();
+function stationLabel(name, loc) {
+  const temp = loc.temp, wind = loc.wind_speed || 0;
+  const high = loc.temp_high || 0, low = loc.temp_low ?? 99, pop = loc.pop || 0;
+
+  if (loc.nws_alerts && loc.nws_alerts.length) return 'ACTIVE NWS ALERT';
+
+  if (name === 'Lakewood') {
+    if (high >= 90)  return 'RARE HEAT EVENT';
+    if (low  <= 32)  return 'FREEZE WARNING';
+    if (wind >= 30)  return 'HIGH WIND EVENT';
+    if (wind >= 20)  return 'BREEZY CONDITIONS';
+    if (pop  >= 80)  return 'HEAVY RAIN DAY';
+    return 'HOME BASE';
+  }
+  if (name === 'Groveland') {
+    if (high >= 100) return 'TRIPLE DIGIT HEAT';
+    if (high >= 95)  return 'EXTREME HEAT';
+    if (low  <= 25)  return 'HARD FREEZE';
+    if (low  <= 32)  return 'FREEZING TEMPS';
+    if (wind >= 30)  return 'HIGH WIND EVENT';
+    if (pop  >= 70)  return 'HEAVY PRECIP';
+    if (high >= 85)  return 'WARM IN THE FOOTHILLS';
+    return 'SIERRA FOOTHILLS';
+  }
+  if (name === 'Death Valley') {
+    if (temp >= 120) return 'DANGEROUS — STAY INSIDE';
+    if (temp >= 115) return 'LIFE-THREATENING HEAT';
+    if (temp >= 110) return 'TRIPLE DIGIT HEAT';
+    if (temp >= 100) return 'SCORCHING';
+    if (temp >= 90)  return 'DESERT HEAT';
+    if (temp >= 80)  return 'WARM & DRY';
+    if (pop  >= 30)  return 'RARE DESERT RAIN';
+    if (low  <= 35)  return 'COLD DESERT NIGHT';
+    return 'MOJAVE DESERT';
+  }
+  if (name === 'Reno') {
+    if (high >= 105) return 'EXCESSIVE HEAT';
+    if (high >= 100) return 'TRIPLE DIGIT HEAT';
+    if (low  <= 20)  return 'HARD FREEZE';
+    if (low  <= 28)  return 'FREEZE WARNING';
+    if (wind >= 30)  return 'HIGH WIND EVENT';
+    if (wind >= 20)  return 'WINDY IN THE BASIN';
+    if (pop  >= 60)  return 'RARE RAIN EVENT';
+    if (high >= 85)  return 'WARM & SUNNY';
+    return 'BIGGEST LITTLE CITY';
+  }
+  return name.toUpperCase();
 }
 
 function fmtTime(t) { return (t || '—').replace(/^0/, ''); }
@@ -293,7 +333,7 @@ function buildCard(loc, forecast) {
   const [uvc, uvlbl] = UV_INFO(loc.uv_index);
   const watch        = isWatch(loc);
   const reasons      = watchReasons(loc);
-  const label        = stationLabel(loc.name, loc.temp);
+  const label        = stationLabel(loc.name, loc);
   const nwsUrl       = NWS_URLS[loc.name] || 'https://alerts.weather.gov';
 
   return `

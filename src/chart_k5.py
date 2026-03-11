@@ -4,8 +4,16 @@ Simple, bold, glanceable. Matches dashboard aesthetic without the clutter.
 """
 
 from PIL import Image, ImageDraw, ImageFont
-import math
+import math, os
 from datetime import datetime
+try:
+    import pytz
+    _PT = pytz.timezone("America/Los_Angeles")
+    def _now_pt():
+        return datetime.now(_PT)
+except ImportError:
+    def _now_pt():
+        return datetime.utcnow()
 
 _FP = "/usr/share/fonts/truetype"
 def _f(name, size):
@@ -60,28 +68,80 @@ def _pick_icon(desc):
     if any(w in d for w in ("clear","sunny")):            return "sunny"
     return "partly"
 
-STATION_LABELS = {
-    "Lakewood":     "HOME BASE",
-    "Groveland":    "SIERRA FOOTHILLS",
-    "Death Valley": "MOJAVE DESERT",
-    "Reno":         "BIGGEST LITTLE CITY",
-}
+def _station_label(name, temp, wind=0, low=99, high=0, pop=0, nws_alerts=None):
+    """Dynamic subtitle for each station based on current conditions."""
 
-def _station_label(name, temp):
+    # If NWS has active alerts, that takes priority
+    if nws_alerts:
+        return "ACTIVE NWS ALERT"
+
+    if name == "Lakewood":
+        if high >= 90:   return "RARE HEAT EVENT"
+        if low <= 32:    return "FREEZE WARNING"
+        if wind >= 30:   return "HIGH WIND EVENT"
+        if wind >= 20:   return "BREEZY CONDITIONS"
+        if pop >= 80:    return "HEAVY RAIN DAY"
+        return "HOME BASE"
+
+    if name == "Groveland":
+        if high >= 100:  return "TRIPLE DIGIT HEAT"
+        if high >= 95:   return "EXTREME HEAT"
+        if low <= 25:    return "HARD FREEZE"
+        if low <= 32:    return "FREEZING TEMPS"
+        if wind >= 30:   return "HIGH WIND EVENT"
+        if pop >= 70:    return "HEAVY PRECIP"
+        if high >= 85:   return "WARM IN THE FOOTHILLS"
+        return "SIERRA FOOTHILLS"
+
     if name == "Death Valley":
-        if temp >= 110: return "TRIPLE DIGIT HEAT"
-        if temp >= 100: return "SCORCHING"
-        if temp >= 90:  return "DESERT HEAT"
-        if temp >= 80:  return "WARM & DRY"
+        if temp >= 120:  return "DANGEROUS — STAY INSIDE"
+        if temp >= 115:  return "LIFE-THREATENING HEAT"
+        if temp >= 110:  return "TRIPLE DIGIT HEAT"
+        if temp >= 100:  return "SCORCHING"
+        if temp >= 90:   return "DESERT HEAT"
+        if temp >= 80:   return "WARM & DRY"
+        if pop >= 30:    return "RARE DESERT RAIN"
+        if low <= 35:    return "COLD DESERT NIGHT"
         return "MOJAVE DESERT"
-    return STATION_LABELS.get(name, name.upper())
+
+    if name == "Reno":
+        if high >= 105:  return "EXCESSIVE HEAT"
+        if high >= 100:  return "TRIPLE DIGIT HEAT"
+        if low <= 20:    return "HARD FREEZE"
+        if low <= 28:    return "FREEZE WARNING"
+        if wind >= 30:   return "HIGH WIND EVENT"
+        if wind >= 20:   return "WINDY IN THE BASIN"
+        if pop >= 60:    return "RARE RAIN EVENT"
+        if high >= 85:   return "WARM & SUNNY"
+        return "BIGGEST LITTLE CITY"
+
+    return name.upper()
+
+
+# Per-station watch thresholds
+_WATCH = {
+    "Lakewood":     dict(pop=None,  wind=20, heat=90,  freeze=32),
+    "Groveland":    dict(pop=60,    wind=20, heat=95,  freeze=28),
+    "Death Valley": dict(pop=30,    wind=20, heat=110, freeze=35),
+    "Reno":         dict(pop=50,    wind=20, heat=100, freeze=28),
+}
+_WATCH_DEFAULT =    dict(pop=70,    wind=20, heat=100, freeze=32)
 
 def _watch_reasons(loc):
-    r = []
-    if loc.get("pop",0)        >= 70:  r.append(f"Heavy Rain {loc['pop']}%")
-    if loc.get("wind_speed",0) >= 25:  r.append(f"High Winds {loc['wind_speed']} mph")
-    if loc.get("temp_high",0)  >= 100: r.append(f"Excessive Heat {loc['temp_high']}°F")
-    if loc.get("temp_low",99)  <= 25:  r.append(f"Freeze Watch {loc['temp_low']}°F")
+    t  = _WATCH.get(loc["name"], _WATCH_DEFAULT)
+    r  = []
+    if t["pop"]    and loc.get("pop",0)        >= t["pop"]:
+        r.append(f"Heavy Rain {loc['pop']}%")
+    if loc.get("wind_speed",0) >= t["wind"]:
+        r.append(f"High Winds {loc['wind_speed']} mph")
+    if loc.get("temp_high",0)  >= t["heat"]:
+        r.append(f"Excessive Heat {loc['temp_high']}°F")
+    if loc.get("temp_low",99)  <= t["freeze"]:
+        r.append(f"Freeze Watch {loc['temp_low']}°F")
+    # NWS alerts passed in via loc["nws_alerts"] list
+    for alert in loc.get("nws_alerts", []):
+        if alert not in r:
+            r.append(alert)
     return r
 
 def _fmt_time(t):
@@ -220,7 +280,7 @@ def render_card(loc, forecast=None, out="weather_card.png"):
     d.rectangle([0,y,W,y+H_HEADER], fill=PANEL)
     d.rectangle([0,y,W,y+5], fill=ACC)  # cyan accent stripe
 
-    slabel = _station_label(loc["name"], loc["temp"])
+    slabel = _station_label(loc["name"], loc["temp"], wind=loc.get("wind_speed",0), low=loc.get("temp_low",99), high=loc.get("temp_high",0), pop=loc.get("pop",0), nws_alerts=loc.get("nws_alerts"))
     # Label pill left
     lw = int(_f("bold",16).getlength(slabel)) + 24
     _rect(d, 18, y+14, lw, 26, (0,40,65), radius=4)
@@ -236,9 +296,14 @@ def render_card(loc, forecast=None, out="weather_card.png"):
     d.text((W-20, y+H_HEADER//2), cond,
            font=_f("bold",24), fill=TEXT, anchor="rm")
 
-    # Timestamp — small, under condition
-    now = datetime.now()
-    ts  = now.strftime("%-I:%M %p") + f"  ·  {now.strftime('%b %-d')}"
+    # Timestamp — small, under condition — use passed env var (PT) or fallback to PT now
+    _ts_env = os.environ.get("TIMESTAMP", "")
+    if _ts_env:
+        # Workflow passes e.g. "7:02 AM PT | March 11, 2026" — show first part only
+        ts = _ts_env.split("|")[0].strip()
+    else:
+        now = _now_pt()
+        ts  = now.strftime("%-I:%M %p PT") + f"  ·  {now.strftime('%b %-d')}"
     d.text((W-20, y+H_HEADER-16), ts,
            font=_f("light",16), fill=MUTED, anchor="rb")
 
@@ -397,7 +462,7 @@ def _render_cell(loc, out, W, H):
     # Header
     d.rectangle([0,y,W,y+H_HEADER], fill=PANEL)
     d.rectangle([0,y,W,y+4], fill=ACC)
-    slabel = _station_label(loc["name"], loc["temp"])
+    slabel = _station_label(loc["name"], loc["temp"], wind=loc.get("wind_speed",0), low=loc.get("temp_low",99), high=loc.get("temp_high",0), pop=loc.get("pop",0), nws_alerts=loc.get("nws_alerts"))
     d.text((14,y+10), slabel, font=_f("bold",14), fill=ACC, anchor="lt")
     d.text((14,y+28), f"{loc['name']}, {loc['state']}",
            font=_f("black",32), fill=WHITE, anchor="lt")

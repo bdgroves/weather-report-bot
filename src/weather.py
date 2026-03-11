@@ -48,6 +48,8 @@ def get_weather_data(api_key):
         sunrise = datetime.fromtimestamp(c["sys"]["sunrise"], tz=tz).strftime("%I:%M %p")
         sunset  = datetime.fromtimestamp(c["sys"]["sunset"],  tz=tz).strftime("%I:%M %p")
 
+        nws_alerts = get_nws_alerts(loc["lat"], loc["lon"])
+
         weather_data.append({
             "display":     loc["display"],
             "emoji":       loc["emoji"],
@@ -70,8 +72,10 @@ def get_weather_data(api_key):
             "sunset":      sunset,
             "heat_label":  get_heat_label(temp),
             "pop":         round(pop),
+            "nws_alerts":  nws_alerts,
         })
-        print(f"    OK: {round(temp)}F  {c['weather'][0]['description'].title()}")
+        alert_str = f"  ⚠ {len(nws_alerts)} NWS alert(s)" if nws_alerts else ""
+        print(f"    OK: {round(temp)}F  {c['weather'][0]['description'].title()}{alert_str}")
 
     return weather_data
 
@@ -113,3 +117,22 @@ def get_heat_label(temp_f):
     elif temp_f >= 50:  return "Cool"
     elif temp_f >= 32:  return "Cold"
     else:               return "Freezing"
+
+
+def get_nws_alerts(lat, lon):
+    """Fetch active NWS alerts for a lat/lon. Returns list of short event strings."""
+    try:
+        url  = f"https://api.weather.gov/alerts/active?point={lat},{lon}&status=actual&message_type=alert"
+        resp = requests.get(url, timeout=10,
+                            headers={"User-Agent": "weather-report-bot/1.0"})
+        resp.raise_for_status()
+        features = resp.json().get("features", [])
+        alerts = []
+        for feat in features:
+            event = feat.get("properties", {}).get("event", "")
+            if event and event not in alerts:
+                alerts.append(event)
+        return alerts
+    except Exception as e:
+        print(f"    NWS alert fetch skipped: {e}")
+        return []
