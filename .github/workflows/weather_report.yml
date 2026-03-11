@@ -2,15 +2,12 @@ name: Weather Report Bot
 
 on:
   schedule:
-    - cron: "0 15 * * *"   # 7:00 AM PT
-    - cron: "0 2 * * *"    # 6:00 PM PT
-  workflow_dispatch:
+    - cron: "0 * * * *"   # Every hour — dashboard always refreshes
+  workflow_dispatch:       # Manual trigger always runs everything
 
 jobs:
   generate-and-post:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -19,23 +16,40 @@ jobs:
           pixi-version: latest
           cache: true
 
+      - name: Download emoji assets
+        run: pixi run download-emoji
+
+      # ── Determine report period + whether to post social ──────────────────
       - name: Determine report period
         id: report_time
+        env:
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
         run: |
           pixi run python -c "
           from datetime import datetime
-          import pytz
+          import pytz, os
           pt  = pytz.timezone('America/Los_Angeles')
           now = datetime.now(pt)
-          period = 'morning' if 6 <= now.hour < 14 else 'evening'
-          ts = now.strftime('%I:%M %p PT').lstrip('0') + now.strftime(' | %B ') + str(now.day) + now.strftime(', %Y')
-          with open('$GITHUB_OUTPUT', 'a') as f:
+          h   = now.hour
+
+          period = 'morning' if 6 <= h < 14 else 'evening'
+          ts     = now.strftime('%-I:%M %p PT | %B %d, %Y')
+
+          # Social posts only at 7 AM and 6 PM PT
+          # workflow_dispatch (manual run) always posts
+          event      = os.environ.get('GITHUB_EVENT_NAME', '')
+          is_social  = 'true' if (h in (7, 18) or event == 'workflow_dispatch') else 'false'
+
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
               f.write(f'REPORT_PERIOD={period}\n')
               f.write(f'TIMESTAMP={ts}\n')
-          print(f'Period: {period} | {ts}')
+              f.write(f'POST_SOCIAL={is_social}\n')
+
+          print(f'Period: {period} | {ts} | post_social={is_social}')
           "
 
-      - name: Generate broadcast cards (original 3-panel)
+      # ── Generate cards + JSON (every run) ─────────────────────────────────
+      - name: Generate original chart
         env:
           OPENWEATHER_API_KEY: ${{ secrets.OPENWEATHER_API_KEY }}
           REPORT_PERIOD: ${{ steps.report_time.outputs.REPORT_PERIOD }}
@@ -49,24 +63,44 @@ jobs:
           TIMESTAMP: ${{ steps.report_time.outputs.TIMESTAMP }}
         run: |
           pixi run python -c "
-          import sys, os
+          import os, sys
           sys.path.insert(0, 'src')
           from weather import get_weather_data
           from chart_k5 import create_k5_charts
-          key = os.environ['OPENWEATHER_API_KEY']
-          data = get_weather_data(key)
-          create_k5_charts(data, report_period=os.environ.get('REPORT_PERIOD','morning'), timestamp=os.environ.get('TIMESTAMP',''))
+          api_key = os.environ['OPENWEATHER_API_KEY']
+          data    = get_weather_data(api_key)
+          try:
+              from weather import get_forecast_data
+              forecast = get_forecast_data(api_key)
+          except Exception as e:
+              print(f'Forecast skipped: {e}')
+              forecast = {}
+          create_k5_charts(data, forecast_data=forecast,
+                           report_period=os.environ.get('REPORT_PERIOD','morning'),
+                           timestamp=os.environ.get('TIMESTAMP',''))
           "
 
-      - name: Export weather data to JSON for dashboard
+      - name: Export JSON for dashboard
         env:
           OPENWEATHER_API_KEY: ${{ secrets.OPENWEATHER_API_KEY }}
           REPORT_PERIOD: ${{ steps.report_time.outputs.REPORT_PERIOD }}
           TIMESTAMP: ${{ steps.report_time.outputs.TIMESTAMP }}
-        run: |
-          pixi run python src/export_json.py
+        run: pixi run python src/export_json.py
 
+      # ── Commit PNGs + JSON back to repo ───────────────────────────────────
+      - name: Commit dashboard data
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git pull --rebase origin main
+          git add -f weather_*.png weather_data.json
+          git diff --cached --quiet && echo "No changes to commit" || \
+            git commit -m "chore: update weather data [skip ci]"
+          git push
+
+      # ── Social posts — morning (7 AM PT) and evening (6 PM PT) only ───────
       - name: Post to Twitter
+        if: steps.report_time.outputs.POST_SOCIAL == 'true'
         env:
           TWITTER_API_KEY: ${{ secrets.TWITTER_API_KEY }}
           TWITTER_API_SECRET: ${{ secrets.TWITTER_API_SECRET }}
@@ -78,6 +112,7 @@ jobs:
         run: pixi run twitter
 
       - name: Post to BlueSky
+        if: steps.report_time.outputs.POST_SOCIAL == 'true'
         env:
           BLUESKY_HANDLE: ${{ secrets.BLUESKY_HANDLE }}
           BLUESKY_APP_PASSWORD: ${{ secrets.BLUESKY_APP_PASSWORD }}
@@ -86,30 +121,14 @@ jobs:
           TIMESTAMP: ${{ steps.report_time.outputs.TIMESTAMP }}
         run: pixi run bluesky
 
-      - name: Commit all outputs to repo
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add weather_report.png weather_lakewood.png weather_groveland.png weather_death_valley.png weather_reno.png
-          git add weather_report_k5.png weather_lakewood_k5.png weather_groveland_k5.png weather_death_valley_k5.png weather_reno_k5.png || true
-          git add weather_data.json || true
-          git diff --staged --quiet || git commit -m "bot: update weather cards + dashboard data [skip ci]"
-          git push
-
+      # ── Artifacts ─────────────────────────────────────────────────────────
       - name: Upload chart artifacts
         uses: actions/upload-artifact@v4
         with:
           name: weather-charts
           path: |
             weather_report.png
-            weather_lakewood.png
-            weather_groveland.png
-            weather_death_valley.png
-            weather_reno.png
             weather_report_k5.png
-            weather_lakewood_k5.png
-            weather_groveland_k5.png
-            weather_death_valley_k5.png
-            weather_reno_k5.png
+            weather_*.png
             weather_data.json
           retention-days: 7
