@@ -6,3 +6,6 @@
 # Python cache
 __pycache__/
 *.pyc
+
+# chart PNGs live on the charts branch
+weather_*.png

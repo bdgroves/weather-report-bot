@@ -22,17 +22,17 @@ Four locations. Four completely different air masses. One report.
 ## 📸 Latest Cards
 
 ### Combined Report
-![Daily Weather Report](weather_report.png)
+![Daily Weather Report](https://raw.githubusercontent.com/bdgroves/weather-report-bot/charts/weather_report.png)
 
 ### Individual Station Cards
 
 | Lakewood, WA | Groveland, CA |
 |---|---|
-| ![Lakewood](weather_lakewood.png) | ![Groveland](weather_groveland.png) |
+| ![Lakewood](https://raw.githubusercontent.com/bdgroves/weather-report-bot/charts/weather_lakewood.png) | ![Groveland](https://raw.githubusercontent.com/bdgroves/weather-report-bot/charts/weather_groveland.png) |
 
 | Death Valley, CA | Reno, NV |
 |---|---|
-| ![Death Valley](weather_death_valley.png) | ![Reno](weather_reno.png) |
+| ![Death Valley](https://raw.githubusercontent.com/bdgroves/weather-report-bot/charts/weather_death_valley.png) | ![Reno](https://raw.githubusercontent.com/bdgroves/weather-report-bot/charts/weather_reno.png) |
 
 ---
 

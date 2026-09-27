@@ -92,10 +92,29 @@ jobs:
           git stash --include-untracked
           git pull --rebase origin main
           git stash pop || true
-          git add -f weather_*.png weather_data.json
+          git add weather_data.json
           git diff --cached --quiet && echo "No changes to commit" || \
             git commit -m "chore: update weather data [skip ci]"
           git push
+
+      # ── Publish chart PNGs to a single-commit "charts" branch ─────────────
+      # Committing the PNGs to main every hour kept every version forever and
+      # grew the repo past 2 GB. The dashboard only reads weather_data.json;
+      # the PNGs are for the README, which reads them from this branch.
+      - name: Publish charts to the charts branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ls weather_*.png >/dev/null 2>&1 || { echo "No charts this run"; exit 0; }
+          tmp=$(mktemp -d)
+          cp weather_*.png "$tmp"/
+          cd "$tmp"
+          git init -q -b charts
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "charts: $(date -u +%Y-%m-%dT%H:%MZ)"
+          git push -f -q "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" charts
 
       # ── Social posts — morning (7 AM PT) and evening (6 PM PT) only ───────
       - name: Post to Twitter
