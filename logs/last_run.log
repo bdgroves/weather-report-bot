@@ -1,4 +1,1 @@
-2026-10-05 04:05:21,555 [ERROR] x: post failed: HTTP 402 HTTPException: 402 Payment Required
-credits depleted
-2026-10-05 04:05:21,556 [ERROR] x stopped accepting posts. Failing this run once so GitHub sends an email.
-2026-10-05 04:05:23,514 [INFO] bluesky: posted at://did:plc:i5gdtucpzg75nul2kuk5uefq/app.bsky.feed.post/3mx3zyvmf7k2q
+2026-10-05 11:27:23,117 [INFO] 04:27 PT is outside the posting windows; nothing to post.
