@@ -2,7 +2,7 @@
 
 > *"It's already on the ground. It's not gonna stop."*
 
-A fully automated broadcast-quality weather intelligence system. Every hour it pulls live conditions for four wildly different places and refreshes the [dashboard](https://brooksgroves.com/weather-report-bot/). Twice a day — once in the morning, once in the evening — it posts one report to X and Bluesky: the combined card and a line per station. No human required.
+A fully automated broadcast-quality weather intelligence system. Every hour it pulls live conditions for four wildly different places and refreshes the [dashboard](https://brooksgroves.com/weather-report-bot/). It can also post one report twice a day to Bluesky and X. **That's switched off for now** (October 2026): the live weather station page has the same data, and X has no API credits. Set the repo variable `POST_REPORT` to `on` to bring the posts back, and `POST_TO_X` to `on` for X as well.
 
 ---
 

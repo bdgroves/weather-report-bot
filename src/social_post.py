@@ -216,7 +216,7 @@ def main() -> int:
     alt = alt_text(data)
 
     networks = {
-        "x": (post_x, all(os.environ.get(k) for k in (
+        "x": (post_x, os.environ.get("POST_TO_X", "on").lower() == "on" and all(os.environ.get(k) for k in (
             "TWITTER_API_KEY", "TWITTER_API_SECRET", "TWITTER_ACCESS_TOKEN", "TWITTER_ACCESS_SECRET"))),
         "bluesky": (lambda t, i: post_bsky(t, i, alt),
                     bool(os.environ.get("BLUESKY_HANDLE") and os.environ.get("BLUESKY_APP_PASSWORD"))),

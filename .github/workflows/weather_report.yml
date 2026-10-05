@@ -87,12 +87,16 @@ jobs:
           TIMESTAMP: ${{ steps.report_time.outputs.TIMESTAMP }}
         run: pixi run python src/export_json.py
 
-      # ── One report post to X and Bluesky ─────────────────────────────────
+      # ── Report post to Bluesky (and X), standing by ──────────────────────
       # Posts on the first run in each window (6–11 AM, 5–10 PM PT) that
       # hasn't posted yet. Fails once if a network starts refusing posts, so
       # GitHub sends an email; the networks don't block each other.
+      # Off since October 2026: the live weather station page has the same
+      # data, so the twice-daily post isn't needed. To turn it back on, set
+      # the repo variable POST_REPORT to "on" (and POST_TO_X to "on" for X).
       - name: Post report
         id: social
+        if: vars.POST_REPORT == 'on' || inputs.post_now
         env:
           TWITTER_API_KEY: ${{ secrets.TWITTER_API_KEY }}
           TWITTER_API_SECRET: ${{ secrets.TWITTER_API_SECRET }}
@@ -100,6 +104,7 @@ jobs:
           TWITTER_ACCESS_SECRET: ${{ secrets.TWITTER_ACCESS_SECRET }}
           BLUESKY_HANDLE: ${{ secrets.BLUESKY_HANDLE }}
           BLUESKY_APP_PASSWORD: ${{ secrets.BLUESKY_APP_PASSWORD }}
+          POST_TO_X: ${{ vars.POST_TO_X }}
           POST_NOW: ${{ inputs.post_now && '1' || '' }}
           DRY_RUN: ${{ inputs.dry_run && '1' || '' }}
         run: pixi run social
