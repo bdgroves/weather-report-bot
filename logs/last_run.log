@@ -1,17 +1,4 @@
-2026-10-05 04:01:53,852 [INFO] [DRY RUN] x (253 chars)
-West Coast weather · Sun Oct 4, 9:01 PM
-🌲 Lakewood 57° clear sky · H65 L49
-🏔️ Groveland 78° few clouds · H89 L62
-🔥 Death Valley 89° clear sky · H102 L74
-🎰 Reno 73° overcast clouds · H84 L53
-
-https://brooksgroves.com/weather-report-bot/
-#WAwx #CAwx #NVwx
-2026-10-05 04:01:53,852 [INFO] [DRY RUN] bluesky (235 chars)
-West Coast weather · Sun Oct 4, 9:01 PM
-🌲 Lakewood 57° clear sky · H65 L49
-🏔️ Groveland 78° few clouds · H89 L62
-🔥 Death Valley 89° clear sky · H102 L74
-🎰 Reno 73° overcast clouds · H84 L53
-
-https://brooksgroves.com/weather-report-bot/
+2026-10-05 04:05:21,555 [ERROR] x: post failed: HTTP 402 HTTPException: 402 Payment Required
+credits depleted
+2026-10-05 04:05:21,556 [ERROR] x stopped accepting posts. Failing this run once so GitHub sends an email.
+2026-10-05 04:05:23,514 [INFO] bluesky: posted at://did:plc:i5gdtucpzg75nul2kuk5uefq/app.bsky.feed.post/3mx3zyvmf7k2q
