@@ -2,7 +2,7 @@
 
 > *"It's already on the ground. It's not gonna stop."*
 
-A fully automated broadcast-quality weather intelligence system. Twice daily it wakes up, pulls live atmospheric data across four wildly different locations, renders cinematic station cards, and fires them to Twitter and BlueSky — no human required.
+A fully automated broadcast-quality weather intelligence system. Every hour it pulls live conditions for four wildly different places and refreshes the [dashboard](https://brooksgroves.com/weather-report-bot/). Twice a day — once in the morning, once in the evening — it posts one report to X and Bluesky: the combined card and a line per station. No human required.
 
 ---
 
@@ -39,7 +39,7 @@ Four locations. Four completely different air masses. One report.
 ## ⚡ How It Works
 
 ```
-GitHub Actions (7 AM PT / 6 PM PT)
+GitHub Actions (hourly; posts once per morning and evening window)
         │
         ▼
   OpenWeatherMap API
@@ -60,8 +60,9 @@ GitHub Actions (7 AM PT / 6 PM PT)
   └─────────────────────────────────────┘
         │
         ▼
-  Posted to Twitter + BlueSky
-  with live data captions & hashtags
+  One post to X + Bluesky:
+  combined card, a line per station,
+  NWS warnings/watches if any
 ```
 
 ---
@@ -74,8 +75,12 @@ weather-report-bot/
 │   ├── main.py           # Orchestrator
 │   ├── weather.py        # OpenWeatherMap fetcher
 │   ├── chart.py          # Broadcast card renderer + post text builder
-│   ├── twitter_post.py   # Twitter / X posting
-│   └── bluesky_post.py   # BlueSky posting
+│   ├── chart_k5.py       # The 2x2 card that gets posted
+│   ├── export_json.py    # weather_data.json for the dashboard
+│   └── social_post.py    # One report post to X and Bluesky
+├── tests/test_social.py  # Offline tests (fake data, fake networks)
+├── logs/                 # last_run.log + posts.jsonl, committed each run
+├── social_state.json     # What posted when, and each network's status
 ├── .github/
 │   └── workflows/
 │       └── weather_report.yml   # Scheduled automation
@@ -114,9 +119,10 @@ $env:OPENWEATHER_API_KEY = "your_key_here"
 # Generate cards
 pixi run chart
 
-# Post to social (requires Twitter + BlueSky secrets)
-pixi run twitter
-pixi run bluesky
+# Post the report (requires X + Bluesky secrets)
+$env:POST_NOW = "1"   # post even outside the morning/evening windows
+$env:DRY_RUN = "1"   # print the post, send nothing
+pixi run social
 
 # Or do everything at once
 pixi run all
@@ -142,12 +148,22 @@ Set these in **GitHub → Settings → Secrets and variables → Actions**:
 
 ## 📅 Schedule
 
-| Run | UTC | Pacific Time |
-|---|---|---|
-| Morning | `0 15 * * *` | 7:00 AM PT |
-| Evening | `0 2 * * *` | 6:00 PM PT |
+The workflow runs hourly for the dashboard (GitHub decides exactly when; lately every two or three hours). The report posts on the **first run of each window** that hasn't posted yet:
 
-Or trigger manually from the **Actions** tab anytime.
+| Report | Window (Pacific) |
+|---|---|
+| Morning | 6:00–11:59 AM |
+| Evening | 5:00–10:59 PM |
+
+From the **Actions** tab, **Run workflow** has two switches: *Post now* (post outside the windows) and *Dry run* (log the post, send nothing).
+
+## 🩺 Is it posting?
+
+- `logs/posts.jsonl` — every post attempt, per network, with the exact error if one failed
+- `logs/last_run.log` — the latest run
+- `social_state.json` — last post and current status for X and Bluesky
+
+X and Bluesky post independently, so one failing never stops the other. If the card won't upload, the report goes out as text. When a network starts refusing posts, the run **fails once** so GitHub sends an email, then logs quietly until it recovers.
 
 ---
 
@@ -174,7 +190,7 @@ Precipitation chance bar, cloud cover bar, sunrise/sunset times, dew point, pres
 - **Twitter/X:** [@bdgroves](https://twitter.com/bdgroves)
 - **BlueSky:** [@bdgroves.bsky.social](https://bsky.app/profile/bdgroves.bsky.social)
 
-Hashtags: `#WAwx #CAwx #NVwx #PNWwx #Lakewood #DeathValley #Reno #GrovelandCA #Weather #DailyWeather`
+Hashtags on X: `#WAwx #CAwx #NVwx`. Bluesky gets a link to the dashboard instead.
 
 ---
 

@@ -9,9 +9,8 @@ platforms = ["win-64", "linux-64", "osx-64", "osx-arm64"]
 [tasks]
 download-emoji = "python download_emoji.py"
 chart   = "python src/main.py"
-twitter = "python src/twitter_post.py"
-bluesky = "python src/bluesky_post.py"
-all     = { depends-on = ["chart", "twitter", "bluesky"] }
+social  = "python src/social_post.py"
+all     = { depends-on = ["chart", "social"] }
 view    = "start weather_report.png"
 
 [dependencies]

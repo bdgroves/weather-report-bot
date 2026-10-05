@@ -2,8 +2,19 @@ name: Weather Report Bot
 
 on:
   schedule:
-    - cron: "0 * * * *"   # Every hour — dashboard always refreshes
-  workflow_dispatch:       # Manual trigger always runs everything
+    # Hourly for the dashboard. GitHub runs scheduled jobs when it can
+    # (lately every 2–3 h); off-the-hour minutes get picked up more reliably.
+    - cron: "17 * * * *"
+  workflow_dispatch:
+    inputs:
+      post_now:
+        description: "Post the report now, even outside the 6–11 AM / 5–10 PM windows"
+        type: boolean
+        default: false
+      dry_run:
+        description: "Dry run: log the post, send nothing"
+        type: boolean
+        default: false
 
 jobs:
   generate-and-post:
@@ -19,8 +30,6 @@ jobs:
       # ── Determine report period + whether to post social ──────────────────
       - name: Determine report period
         id: report_time
-        env:
-          GITHUB_EVENT_NAME: ${{ github.event_name }}
         run: |
           pixi run python -c "
           from datetime import datetime
@@ -32,17 +41,11 @@ jobs:
           period = 'morning' if 6 <= h < 14 else 'evening'
           ts     = now.strftime('%-I:%M %p PT | %B %d, %Y')
 
-          # Social posts only at 7 AM and 6 PM PT
-          # workflow_dispatch (manual run) always posts
-          event      = os.environ.get('GITHUB_EVENT_NAME', '')
-          is_social  = 'true' if (h in (7, 18) or event == 'workflow_dispatch') else 'false'
-
           with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
               f.write(f'REPORT_PERIOD={period}\n')
               f.write(f'TIMESTAMP={ts}\n')
-              f.write(f'POST_SOCIAL={is_social}\n')
 
-          print(f'Period: {period} | {ts} | post_social={is_social}')
+          print(f'Period: {period} | {ts}')
           "
 
       # ── Generate cards + JSON (every run) ─────────────────────────────────
@@ -84,15 +87,33 @@ jobs:
           TIMESTAMP: ${{ steps.report_time.outputs.TIMESTAMP }}
         run: pixi run python src/export_json.py
 
+      # ── One report post to X and Bluesky ─────────────────────────────────
+      # Posts on the first run in each window (6–11 AM, 5–10 PM PT) that
+      # hasn't posted yet. Fails once if a network starts refusing posts, so
+      # GitHub sends an email; the networks don't block each other.
+      - name: Post report
+        id: social
+        env:
+          TWITTER_API_KEY: ${{ secrets.TWITTER_API_KEY }}
+          TWITTER_API_SECRET: ${{ secrets.TWITTER_API_SECRET }}
+          TWITTER_ACCESS_TOKEN: ${{ secrets.TWITTER_ACCESS_TOKEN }}
+          TWITTER_ACCESS_SECRET: ${{ secrets.TWITTER_ACCESS_SECRET }}
+          BLUESKY_HANDLE: ${{ secrets.BLUESKY_HANDLE }}
+          BLUESKY_APP_PASSWORD: ${{ secrets.BLUESKY_APP_PASSWORD }}
+          POST_NOW: ${{ inputs.post_now && '1' || '' }}
+          DRY_RUN: ${{ inputs.dry_run && '1' || '' }}
+        run: pixi run social
+
       # ── Commit PNGs + JSON back to repo ───────────────────────────────────
-      - name: Commit dashboard data
+      - name: Commit dashboard data, post state and log
+        if: always()
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git stash --include-untracked
           git pull --rebase origin main
           git stash pop || true
-          git add weather_data.json
+          git add weather_data.json social_state.json logs/ 2>/dev/null || git add weather_data.json
           git diff --cached --quiet && echo "No changes to commit" || \
             git commit -m "chore: update weather data [skip ci]"
           git push
@@ -102,6 +123,7 @@ jobs:
       # grew the repo past 2 GB. The dashboard only reads weather_data.json;
       # the PNGs are for the README, which reads them from this branch.
       - name: Publish charts to the charts branch
+        if: always()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -115,29 +137,6 @@ jobs:
           git add -A
           git commit -q -m "charts: $(date -u +%Y-%m-%dT%H:%MZ)"
           git push -f -q "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" charts
-
-      # ── Social posts — morning (7 AM PT) and evening (6 PM PT) only ───────
-      - name: Post to Twitter
-        if: steps.report_time.outputs.POST_SOCIAL == 'true'
-        env:
-          TWITTER_API_KEY: ${{ secrets.TWITTER_API_KEY }}
-          TWITTER_API_SECRET: ${{ secrets.TWITTER_API_SECRET }}
-          TWITTER_ACCESS_TOKEN: ${{ secrets.TWITTER_ACCESS_TOKEN }}
-          TWITTER_ACCESS_SECRET: ${{ secrets.TWITTER_ACCESS_SECRET }}
-          OPENWEATHER_API_KEY: ${{ secrets.OPENWEATHER_API_KEY }}
-          REPORT_PERIOD: ${{ steps.report_time.outputs.REPORT_PERIOD }}
-          TIMESTAMP: ${{ steps.report_time.outputs.TIMESTAMP }}
-        run: pixi run twitter
-
-      - name: Post to BlueSky
-        if: steps.report_time.outputs.POST_SOCIAL == 'true'
-        env:
-          BLUESKY_HANDLE: ${{ secrets.BLUESKY_HANDLE }}
-          BLUESKY_APP_PASSWORD: ${{ secrets.BLUESKY_APP_PASSWORD }}
-          OPENWEATHER_API_KEY: ${{ secrets.OPENWEATHER_API_KEY }}
-          REPORT_PERIOD: ${{ steps.report_time.outputs.REPORT_PERIOD }}
-          TIMESTAMP: ${{ steps.report_time.outputs.TIMESTAMP }}
-        run: pixi run bluesky
 
       # ── Artifacts ─────────────────────────────────────────────────────────
       - name: Upload chart artifacts
